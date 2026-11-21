@@ -24,6 +24,8 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:16px s
 #help pre{background:var(--body);border:1px solid var(--edge);border-radius:8px;padding:8px 10px;margin:0;font:12px ui-monospace,monospace;text-align:left;white-space:pre-wrap;max-width:100%;color:var(--ink);user-select:text;-webkit-user-select:text}
 #gen{border:1px solid var(--edge);background:var(--body);color:var(--ink);border-radius:10px;padding:9px 14px;font:600 13px system-ui}
 #diaglink{color:var(--cro);font-size:13px}
+#diagrow{margin:0}
+#diagrow a{color:var(--cro);font-size:13px}
 #code{font:600 30px ui-monospace,monospace;letter-spacing:.28em;width:10ch;text-align:center;padding:10px;border-radius:12px;border:2px solid var(--edge);background:var(--body);color:var(--ink);touch-action:auto;user-select:text;-webkit-user-select:text;text-transform:uppercase}
 #go{font:600 18px system-ui;padding:12px 32px;border:0;border-radius:12px;background:var(--cro);color:#fff}
 #go:disabled{opacity:.5}
@@ -57,6 +59,12 @@ display:grid;grid-template-columns:1fr 1.1fr 1fr;grid-template-rows:auto 1fr;gap
 @media (max-height:420px){.stick{width:104px;height:104px}.faces{transform:scale(.85)}.dpad{transform:scale(.85)}}
 @media (orientation:portrait){body.playing #rot{display:flex}}
 #rot{display:none;position:fixed;inset:0;background:var(--bg);z-index:9;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mute)}
+#toast{display:none;position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:40;
+max-width:92vw;padding:10px 14px;border-radius:10px;font:600 13px system-ui;text-align:center;
+background:#3a2d10;color:#ffd479;border:1px solid #6b5320;box-shadow:0 4px 16px #0008}
+#toast.show{display:block}
+#toast.ok{background:#0f2e23;color:var(--tri);border-color:#1f5c47}
+#toast.bad{background:#3a1214;color:#ff9a9e;border-color:#6b2226}
 #pchint{display:none;position:fixed;top:0;left:0;right:0;z-index:20;background:#3a2d10;color:#ffd479;
 border-bottom:1px solid #6b5320;font:13px/1.4 system-ui;padding:8px 12px;text-align:center}
 #pchint.show{display:block}
@@ -77,6 +85,7 @@ border-radius:10px;padding:9px 14px;font:600 13px system-ui}
 </head>
 <body>
 <div id="rot">Rotate your phone to landscape to use the controller.</div>
+<div id="toast"></div>
 <div id="pchint">You are using a <b>computer</b>. This page is the controller — open this same
 link on your <b>phone</b>, then point the phone at the PC.</div>
 
@@ -99,6 +108,7 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
   <div id="pstatus"></div>
   <div id="err" role="alert"></div>
   <p id="hint">Run <code>start-padlink.cmd</code> on your PC — the code appears in its window.</p>
+  <p id="diagrow"><a href="diag.html">Connection problems? Run diagnostics</a></p>
   <details id="help">
     <summary>No code on your PC?</summary>
     <div class="helpbody">
@@ -232,12 +242,24 @@ function connectLan(pin) {
 }
 
 // ----------------------------------------------------------------- relay link
+let toastTimer = null;
+function toast(text, kind) {
+  const el = $("#toast");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "show " + (kind || "");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ""; toastTimer = null; },
+    kind === "ok" ? 2500 : 9000);
+}
+
 function setPairStatus(text) {
   const el = $("#pstatus");
   if (el) el.textContent = text || "";
 }
 
 let relayClient = null;
+let relayStall = null;
 
 function connectRelay(room) {
   if (!CFG.supabaseUrl || !CFG.supabaseAnonKey) {
@@ -251,8 +273,20 @@ function connectRelay(room) {
   $("#err").textContent = "";
   setPairStatus("Opening connection…");
 
+  // Nothing is more useless than a page that spins in silence.
+  if (relayStall) clearTimeout(relayStall);
+  relayStall = setTimeout(() => {
+    if (relayClient && !relayClient.joined) {
+      setPairStatus("");
+      $("#err").textContent =
+        "No answer from the relay after 15 seconds. Open diagnostics to see why.";
+      toast("No answer from the relay — open Diagnostics", "bad");
+    }
+  }, 15000);
+
   const alive = () => {
     setStatus(true, "Connected");
+    toast("Connected to your PC", "ok");
     if (pcTimer) clearTimeout(pcTimer);
     pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
   };
@@ -265,10 +299,12 @@ function connectRelay(room) {
       if (state === "connecting") setPairStatus("Connecting to the relay…");
       else if (state === "joining") setPairStatus("Joining room " + room + "…");
       else if (state === "joined") {
+        if (relayStall) { clearTimeout(relayStall); relayStall = null; }
         setPairStatus("");
         link = {send: o => relayClient.input(o)};
         if ($("#pad").style.display !== "block") enterPad();
         setStatus(false, "Waiting for PC…");
+        toast("Room " + room + " joined — waiting for your PC…", "warn");
         if (pcTimer) clearTimeout(pcTimer);
         pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
       } else if (state === "reconnecting") {
@@ -281,8 +317,10 @@ function connectRelay(room) {
     onAlive: alive,
     onError: message => {
       link = null;
+      if (relayStall) { clearTimeout(relayStall); relayStall = null; }
       setPairStatus("");
       $("#err").textContent = message;
+      toast(message, "bad");
       if ($("#pad").style.display !== "block") setStatus(false, "Relay error");
     }
   });
