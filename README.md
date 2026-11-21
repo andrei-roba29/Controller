@@ -28,8 +28,14 @@ phone app (the files in `web/`); Supabase is the wire between the two.
 2. Install the **ViGEmBus driver**: https://github.com/nefarius/ViGEmBus/releases
    (download the `ViGEmBus_*_x64.msi`, run it, reboot). Without it Windows has no
    virtual-controller support and the agent will tell you so on startup.
-3. Double-click **`start-padlink.cmd`**. First run creates `.venv` and installs
-   `aiohttp`, `websockets` and `vgamepad`.
+3. Run **`start-padlink.cmd`** (double-click it, or in a terminal:
+   `.\start-padlink.cmd`). First run creates `.venv` and installs `aiohttp`,
+   `websockets` and `vgamepad`.
+
+> **In PowerShell, keep the `.\` prefix.** Windows only runs programs from the
+> current folder when you say so, otherwise it reports *"The term
+> 'start-padlink.cmd' is not recognized"*. So `.\start-padlink.cmd --check`,
+> not `start-padlink.cmd --check`. The prefix works in `cmd.exe` too.
 
 The window prints a room code:
 
@@ -63,7 +69,7 @@ You can also share a direct link: `https://your-site.netlify.app/#K7M2QX9P`.
 If phone and PC are on the same network you can skip Supabase entirely:
 
 ```
-start-padlink.cmd --lan
+.\start-padlink.cmd --lan
 ```
 
 The agent serves the same app from your PC on port 8765 and prints a LAN URL and
@@ -106,17 +112,22 @@ hours of active play.
 
 ## Troubleshooting
 
+**PowerShell: "The term 'start-padlink.cmd' is not recognized"** — PowerShell
+does not run programs from the current folder. Prefix it:
+`.\start-padlink.cmd --check`. Make sure the folder you are in actually contains
+`agent.py` (`cd D:\Controller-main` after unzipping).
+
 **No room code appears anywhere** — the agent prints the code as the very first
 thing it does, so if you never saw it the window closed before starting. Run:
 
 ```
-start-padlink.cmd --check
+.\start-padlink.cmd --check
 ```
 
 It reports Python, the three dependencies, the ViGEmBus driver and whether the
 relay is reachable. Alternatively, open the PadLink site, tap
 **"No code on your PC?" → "Create a code on this phone"**, then start the PC with
-`start-padlink.cmd --room <CODE>`.
+`.\start-padlink.cmd --room <CODE>`.
 
 **The phone says "PC not responding"** — the agent is running but in a different
 room: compare the codes, they are case-insensitive.
@@ -147,5 +158,5 @@ rumble are not implemented.
 | `agent.py` | PC agent: relay mode (default) and LAN mode (`--lan`). |
 | `pad.py` | DualShock 4 input mapping shared by both modes. |
 | `supabase.sql` | Realtime RLS policies (already applied). |
-| `start-padlink.cmd` | Windows launcher that sets up `.venv` and runs the agent. |
+| `start-padlink.cmd` | Windows launcher that sets up `.venv` and runs the agent (`.\start-padlink.cmd` in PowerShell). |
 | `netlify.toml` | Tells Netlify to publish `web/`. |
