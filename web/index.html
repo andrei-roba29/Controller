@@ -55,10 +55,16 @@ display:grid;grid-template-columns:1fr 1.1fr 1fr;grid-template-rows:auto 1fr;gap
 @media (max-height:420px){.stick{width:104px;height:104px}.faces{transform:scale(.85)}.dpad{transform:scale(.85)}}
 @media (orientation:portrait){#rot{display:flex}}
 #rot{display:none;position:fixed;inset:0;background:var(--bg);z-index:9;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mute)}
+#pchint{display:none;position:fixed;top:0;left:0;right:0;z-index:20;background:#3a2d10;color:#ffd479;
+border-bottom:1px solid #6b5320;font:13px/1.4 system-ui;padding:8px 12px;text-align:center}
+#pchint.show{display:block}
+#pchint b{color:#fff}
 </style>
 </head>
 <body>
 <div id="rot">Rotate your phone to landscape to use the controller.</div>
+<div id="pchint">You are using a <b>computer</b>. This page is the controller — open this same
+link on your <b>phone</b>, then point the phone at the PC.</div>
 
 <form id="pair" onsubmit="return false">
   <h1>PadLink</h1>
@@ -244,6 +250,12 @@ async function connectRelay(room) {
       backToPair("Disconnected from the relay.");
     }
   });
+}
+
+// A desktop browser works, but it is almost never what the user wants: the
+// phone is the controller, the PC only runs the agent.
+if (window.matchMedia("(pointer: fine)").matches && window.innerWidth >= 800) {
+  $("#pchint").classList.add("show");
 }
 
 // ------------------------------------------------------------------- startup
