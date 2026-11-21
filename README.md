@@ -60,8 +60,15 @@ That is all Netlify needs — it never runs Python.
 ### 3. Pair
 
 The agent prints a link and a QR code for the current room. **Scan it with the
-phone camera** (or open the Netlify URL and type the code), tap **Connect**,
-rotate to landscape. The code is remembered per device.
+phone camera** (or open the Netlify URL and type the code), tap **Connect**, then
+turn the phone sideways.
+
+The code is saved in `room.txt` next to `agent.py`, so it stays the same on every
+run and your phone only has to be paired once. Use `--new-room` to rotate it, or
+`--room CODE` to pin a specific one.
+
+If the phone is held upright, the pairing screen still works — the "rotate to
+landscape" prompt only appears once you are actually in the controller.
 
 > The controller page lives on the **phone**. Opening it in the PC's browser also
 > works, but then you are driving the pad from the PC — which is usually not what
@@ -89,7 +96,8 @@ to the WebSocket transport automatically.
 
 | Flag | Effect |
 | --- | --- |
-| `--room K7M2QX9P` | Fixed room code instead of a fresh one per run |
+| `--room K7M2QX9P` | Use this exact room code (not saved to `room.txt`) |
+| `--new-room` | Forget the saved code and generate a fresh one |
 | `--site https://your-site.netlify.app` | Print a ready-to-open pairing link |
 | `--lan` | Local Wi-Fi mode instead of the relay |
 | `--pin 123456` | Fixed LAN PIN |
@@ -183,5 +191,6 @@ rumble are not implemented.
 | `agent.py` | PC agent: relay mode (default) and LAN mode (`--lan`). |
 | `pad.py` | DualShock 4 input mapping shared by both modes. |
 | `supabase.sql` | Realtime RLS policies (already applied). |
+| `room.txt` | Saved room code, created on first run (not in git). |
 | `start-padlink.cmd` | Windows launcher that sets up `.venv` and runs the agent (`.\start-padlink.cmd` in PowerShell). |
 | `netlify.toml` | Tells Netlify to publish `web/`. |

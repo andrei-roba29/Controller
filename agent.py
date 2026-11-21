@@ -300,6 +300,22 @@ def banner(lines: list[str]) -> None:
     print("=" * width + "\n", flush=True)
 
 
+def saved_room() -> str | None:
+    """The room code is remembered in room.txt so the phone pairs only once."""
+    try:
+        code = (ROOT / "room.txt").read_text(encoding="utf-8").strip().upper()
+    except OSError:
+        return None
+    return code if re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{8}", code) else None
+
+
+def save_room(code: str) -> None:
+    try:
+        (ROOT / "room.txt").write_text(code + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def print_qr(url: str) -> None:
     """Optional: a scannable code so nobody has to type a URL on a phone."""
     try:
@@ -423,6 +439,8 @@ def main() -> None:
     parser.add_argument("--site", help="public URL of the PWA, printed with the room code")
     parser.add_argument("--realtime-url", default=None, help="override the Supabase project URL")
     parser.add_argument("--api-key", default=None, help="override the Supabase anon key")
+    parser.add_argument("--new-room", action="store_true",
+                        help="forget the saved room code and make a fresh one")
     parser.add_argument("--check", action="store_true",
                         help="check Python, dependencies, driver and relay, then exit")
     parser.add_argument("--dry-run", action="store_true",
@@ -447,11 +465,14 @@ def main() -> None:
         run_lan(args, Session(session_pad), args.pin or new_pin())
         return
 
-    room = (args.room or new_room_code()).upper()
+    room = (args.room or (None if args.new_room else saved_room()) or new_room_code()).upper()
     if not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{8}", room):
         print(f"\"{room}\" is not a valid room code: it needs 8 characters from 0-9 and\n"
               "A-Z, excluding I, L, O and U (they are easy to mix up).", flush=True)
         raise SystemExit(1)
+
+    if not args.room:
+        save_room(room)
 
     # The code goes on screen before anything else can fail.
     print_code_block(room, site)

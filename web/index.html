@@ -53,7 +53,7 @@ display:grid;grid-template-columns:1fr 1.1fr 1fr;grid-template-rows:auto 1fr;gap
 .l3{width:44px;height:26px;font-size:11px;border-radius:13px}
 .sg{display:flex;flex-direction:column;align-items:center;gap:6px}
 @media (max-height:420px){.stick{width:104px;height:104px}.faces{transform:scale(.85)}.dpad{transform:scale(.85)}}
-@media (orientation:portrait){#rot{display:flex}}
+@media (orientation:portrait){body.playing #rot{display:flex}}
 #rot{display:none;position:fixed;inset:0;background:var(--bg);z-index:9;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mute)}
 #pchint{display:none;position:fixed;top:0;left:0;right:0;z-index:20;background:#3a2d10;color:#ffd479;
 border-bottom:1px solid #6b5320;font:13px/1.4 system-ui;padding:8px 12px;text-align:center}
@@ -189,6 +189,7 @@ function goFull() {
 function enterPad() {
   $("#pair").style.display = "none";
   $("#pad").style.display = "block";
+  document.body.classList.add("playing");
   setStatus(true, mode === "relay" ? "Connecting…" : "Connected");
   store("last:" + mode, code);
   goFull();
@@ -199,6 +200,7 @@ function backToPair(message) {
   if (pcTimer) { clearTimeout(pcTimer); pcTimer = null; }
   $("#pad").style.display = "none";
   $("#pair").style.display = "flex";
+  document.body.classList.remove("playing");
   if (message) $("#err").textContent = message;
   setStatus(false, "Offline");
 }
