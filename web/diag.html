@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PadLink diagnostics</title>
+<style>
+:root{--bg:#16181f;--body:#22252e;--edge:#343845;--ink:#e8eaf0;--mute:#8b90a0;
+--ok:#3fbf8f;--bad:#e5484d;--info:#4c8dff;--warn:#ffd479}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:var(--ink);
+font:15px/1.5 system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px}
+p.sub{margin:0 0 16px;color:var(--mute);font-size:13px}
+#log{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.line{display:flex;gap:8px;align-items:flex-start;background:var(--body);
+border:1px solid var(--edge);border-radius:8px;padding:8px 10px;
+font:13px/1.45 ui-monospace,monospace;word-break:break-word}
+.mark{flex:0 0 1.1em;font-weight:700}
+.ok .mark{color:var(--ok)} .bad .mark{color:var(--bad)}
+.info .mark{color:var(--info)} .warn .mark{color:var(--warn)}
+label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+color:var(--mute);margin-bottom:6px}
+input{width:100%;font:600 20px ui-monospace,monospace;letter-spacing:.2em;
+text-transform:uppercase;padding:10px;border-radius:10px;border:2px solid var(--edge);
+background:var(--body);color:var(--ink);margin-bottom:12px}
+button{width:100%;font:600 16px system-ui;padding:12px;border:0;border-radius:10px;
+background:#4c8dff;color:#fff}
+button:disabled{opacity:.5}
+#summary{font:600 16px system-ui;padding:12px;border-radius:10px;margin-bottom:16px;
+background:var(--body);border:1px solid var(--edge);display:none}
+#summary.show{display:block}
+</style>
+</head>
+<body>
+<h1>PadLink diagnostics</h1>
+<p class="sub">Runs the same checks the app does, on this device. Nothing is changed.</p>
+<div id="summary"></div>
+<label for="room">Room code (from the PC window)</label>
+<input id="room" inputmode="text" autocapitalize="characters" autocomplete="off" placeholder="K7M2QX9P">
+<button id="run">Run checks</button>
+<div id="log"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const log = $("#log");
+
+function line(kind, text) {
+  const row = document.createElement("div");
+  row.className = "line " + kind;
+  const mark = document.createElement("span");
+  mark.className = "mark";
+  mark.textContent = kind === "ok" ? "✓" : kind === "bad" ? "✗" : kind === "warn" ? "!" : "•";
+  const body = document.createElement("span");
+  body.textContent = text;
+  row.append(mark, body);
+  log.append(row);
+  return row;
+}
+
+function timeout(ms, label) {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error("timeout after " + ms + "ms (" + label + ")")), ms));
+}
+
+async function fetchWithTimeout(url, ms) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const res = await fetch(url, {cache: "no-store", signal: ctl.signal});
+    const text = await res.text();
+    return {status: res.status, ok: res.ok, text};
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function run() {
+  log.textContent = "";
+  $("#summary").className = "";
+  $("#run").disabled = true;
+  const room = ($("#room").value || location.hash.slice(1) || "").toUpperCase()
+    .replace(/[^0-9A-Z]/g, "");
+
+  line("info", "page: " + location.href);
+  line("info", "browser: " + navigator.userAgent);
+  line("info", "online: " + navigator.onLine +
+    " · service worker: " + (navigator.serviceWorker && navigator.serviceWorker.controller
+      ? "CONTROLLING (a cached copy may be in use)" : "not controlling"));
+
+  // 1. which build is deployed?
+  try {
+    const v = await fetchWithTimeout("version.json?x=" + Date.now(), 8000);
+    line(v.ok ? "ok" : "warn", "version.json: " + v.status + " " + v.text.trim().slice(0, 120));
+  } catch (e) {
+    line("warn", "version.json: " + e.message);
+  }
+
+  // 2. config (supabase url + key)
+  let cfg;
+  try {
+    const c = await fetchWithTimeout("config.json?x=" + Date.now(), 10000);
+    if (!c.ok) throw new Error("HTTP " + c.status);
+    cfg = JSON.parse(c.text);
+    line("ok", "config.json: " + cfg.supabaseUrl);
+  } catch (e) {
+    line("bad", "config.json: " + e.message);
+    return finish("Could not read config.json — the deployed site is missing it.");
+  }
+
+  // 3. is relay.js deployed?
+  try {
+    const r = await fetchWithTimeout("relay.js?x=" + Date.now(), 10000);
+    line(r.ok ? "ok" : "bad", "relay.js: HTTP " + r.status + ", " + r.text.length + " bytes");
+  } catch (e) {
+    line("bad", "relay.js: " + e.message);
+  }
+
+  if (!room || room.length !== 8) {
+    line("warn", "no valid 8-character room code entered — stopping before the relay test");
+    return finish("Enter the room code from the PC window, then run again.");
+  }
+  line("info", "room: padlink:" + room);
+
+  // 4. can this device reach Supabase Realtime at all?
+  const base = cfg.supabaseUrl.replace(/\/+$/, "").replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+  const url = base + "/realtime/v1/websocket?apikey=" + encodeURIComponent(cfg.supabaseAnonKey) + "&vsn=1.0.0";
+  line("info", "opening websocket: " + base + "/realtime/v1/websocket");
+
+  const started = Date.now();
+  let ws, joined = false, alive = false;
+  try {
+    ws = new WebSocket(url);
+  } catch (e) {
+    line("bad", "WebSocket construct failed: " + e.message);
+    return finish("This browser refused to open the websocket.");
+  }
+
+  const result = new Promise(resolve => {
+    ws.onopen = () => {
+      line("ok", "websocket open (" + (Date.now() - started) + "ms)");
+      ws.send(JSON.stringify({
+        topic: "realtime:padlink:" + room, event: "phx_join", ref: "1", join_ref: "1",
+        payload: {
+          config: {broadcast: {ack: false, self: false}, presence: {key: ""},
+                   postgres_changes: [], private: true},
+          access_token: cfg.supabaseAnonKey
+        }
+      }));
+      line("info", "join sent, waiting for the relay…");
+    };
+    ws.onmessage = ev => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (msg.event === "phx_reply" && msg.ref === "1") {
+        const status = (msg.payload || {}).status;
+        if (status === "ok") {
+          joined = true;
+          line("ok", "room joined — authorization works");
+        } else {
+          line("bad", "room rejected: " + JSON.stringify(msg.payload).slice(0, 300));
+        }
+      } else if (msg.event === "broadcast") {
+        const name = (msg.payload || {}).event;
+        if (name === "pc-alive") {
+          alive = true;
+          line("ok", "PC keepalive received — the PC agent is in this room");
+          resolve("ok");
+        }
+      } else if (msg.event === "phx_error" || msg.event === "phx_close") {
+        line("bad", "channel closed: " + msg.event + " " + JSON.stringify(msg.payload || {}).slice(0, 200));
+        resolve("dead");
+      }
+    };
+    ws.onerror = () => line("bad", "websocket error event (often a blocked host or TLS problem)");
+    ws.onclose = ev => {
+      line("warn", "websocket closed: code " + ev.code + (ev.reason ? " (" + ev.reason + ")" : ""));
+      resolve(joined ? "noalive" : "dead");
+    };
+    setTimeout(() => resolve(joined ? "noalive" : "dead"), 12000);
+  });
+
+  const outcome = await result;
+  try { ws.close(); } catch (e) {}
+
+  if (outcome === "ok") return finish("Everything works: the relay answers and the PC is present.", "ok");
+  if (outcome === "noalive") return finish("Joined the room, but no PC keepalive — the PC is in a different room, or its agent stopped.", "warn");
+  return finish("Could not reach or join the relay from this device.", "bad");
+}
+
+function finish(text, kind) {
+  const el = $("#summary");
+  el.textContent = text;
+  el.className = "show";
+  el.style.borderColor = kind === "ok" ? "var(--ok)" : kind === "bad" ? "var(--bad)" : "var(--warn)";
+  $("#run").disabled = false;
+  line(kind || "info", text);
+}
+
+$("#run").onclick = run;
+$("#room").value = (location.hash.slice(1) || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+run();
+</script>
+</body>
+</html>

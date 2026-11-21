@@ -1,5 +1,5 @@
-const CACHE = "padlink-v3";
-const SHELL = ["./", "./index.html", "./relay.js", "./config.json", "./manifest.json",
+const CACHE = "padlink-v4";
+const SHELL = ["./", "./index.html", "./relay.js", "./diag.html", "./version.json", "./config.json", "./manifest.json",
                "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

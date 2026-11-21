@@ -142,7 +142,18 @@ The agent prints its version (`PadLink 1.1.0`) in the startup box and in the
 If a flag you read about is missing from `agent.py --help`, the copy is out of
 date.
 
+## Diagnostics
+
+If the phone never connects, open **`<your-site>/diag.html`** on the phone, type
+the room code and read the result. It checks, in order: which build is deployed,
+`config.json`, `relay.js`, whether the device can open a websocket to Supabase,
+whether the room join is authorized, and whether the PC's keepalive arrives.
+
+Every line is marked ✓ / ✗, and the summary at the top says which of those it
+actually failed on — far more useful than "nothing happens".
+
 ## Troubleshooting
+
 
 
 **PowerShell: "The term 'start-padlink.cmd' is not recognized"** — PowerShell

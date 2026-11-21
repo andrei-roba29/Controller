@@ -23,6 +23,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:16px s
 #help .helpbody{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:6px}
 #help pre{background:var(--body);border:1px solid var(--edge);border-radius:8px;padding:8px 10px;margin:0;font:12px ui-monospace,monospace;text-align:left;white-space:pre-wrap;max-width:100%;color:var(--ink);user-select:text;-webkit-user-select:text}
 #gen{border:1px solid var(--edge);background:var(--body);color:var(--ink);border-radius:10px;padding:9px 14px;font:600 13px system-ui}
+#diaglink{color:var(--cro);font-size:13px}
 #code{font:600 30px ui-monospace,monospace;letter-spacing:.28em;width:10ch;text-align:center;padding:10px;border-radius:12px;border:2px solid var(--edge);background:var(--body);color:var(--ink);touch-action:auto;user-select:text;-webkit-user-select:text;text-transform:uppercase}
 #go{font:600 18px system-ui;padding:12px 32px;border:0;border-radius:12px;background:var(--cro);color:#fff}
 #go:disabled{opacity:.5}
@@ -106,6 +107,7 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
       <p>Or create the code here and start the PC agent with it:</p>
       <button type="button" id="gen">Create a code on this phone</button>
       <pre id="genout" hidden></pre>
+      <p><a id="diaglink" href="diag.html">Connection stuck? Run diagnostics</a></p>
     </div>
   </details>
 </form>
