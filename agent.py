@@ -35,6 +35,7 @@ from pad import Pad, new_pin, new_room_code
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
+VERSION = "1.1.0"
 DEFAULT_REALTIME = "https://ljvafmdhcpxbtstaljqb.supabase.co"
 HEARTBEAT_EVERY = 24.0
 PC_ALIVE_EVERY = 2.0
@@ -301,7 +302,7 @@ def banner(lines: list[str]) -> None:
 
 def print_code_block(room: str, site: str) -> None:
     """Printed before anything can fail, so the code is always on screen."""
-    lines = ["PadLink", f"Room code:  {room}"]
+    lines = [f"PadLink {VERSION}", f"Room code:  {room}"]
     if site:
         lines.append(f"Open:       {site.rstrip('/')}/#{room}")
     else:
@@ -366,7 +367,7 @@ def run_check(cfg: dict, args) -> int:
         rows.append(("Supabase relay", "no anon key in web/config.json", False))
 
     width = max(len(row[0]) for row in rows) + 2
-    print("\nPadLink check\n")
+    print(f"\nPadLink check (agent {VERSION})\n")
     for label, value, ok in rows:
         mark = "ok  " if ok else "FAIL"
         print(f"  [{mark}] {label:<{width}}{value}")
@@ -374,9 +375,9 @@ def run_check(cfg: dict, args) -> int:
     failed = [row for row in rows if not row[2]]
     print()
     if not failed:
-        print("  All good. Run start-padlink.cmd to play.", flush=True)
+        print("  All good. Run .\\start-padlink.cmd to play.", flush=True)
         return 0
-    print("  Fix the FAIL lines above, then run start-padlink.cmd --check again.", flush=True)
+    print("  Fix the FAIL lines above, then run .\\start-padlink.cmd --check again.", flush=True)
     if any(row[0] == "ViGEmBus driver" and not row[2] for row in failed):
         print("  ViGEmBus: https://github.com/nefarius/ViGEmBus/releases "
               "(run the .msi, then reboot)", flush=True)
@@ -438,9 +439,9 @@ def main() -> None:
         print("\nThe ViGEmBus driver is missing, so Windows has no virtual controller.\n"
               "  1. Download it:  https://github.com/nefarius/ViGEmBus/releases\n"
               "  2. Run ViGEmBus_*_x64.msi, then reboot Windows\n"
-              "  3. Confirm with: start-padlink.cmd --check\n"
+              "  3. Confirm with: .\\start-padlink.cmd --check\n"
               "\nTo test the phone side without the driver: "
-              "start-padlink.cmd --dry-run", flush=True)
+              ".\\start-padlink.cmd --dry-run", flush=True)
         raise SystemExit(1)
 
     session = Session(pad)

@@ -72,7 +72,7 @@ display:grid;grid-template-columns:1fr 1.1fr 1fr;grid-template-rows:auto 1fr;gap
     <summary>No code on your PC?</summary>
     <div class="helpbody">
       <p>If the window closed or shows an error, run this once and fix whatever it reports:</p>
-      <pre>start-padlink.cmd --check</pre>
+      <pre>.\start-padlink.cmd --check</pre>
       <p>Or create the code here and start the PC agent with it:</p>
       <button type="button" id="gen">Create a code on this phone</button>
       <pre id="genout" hidden></pre>
@@ -276,7 +276,7 @@ $("#gen").onclick = () => {
   $("#err").textContent = "";
   const out = $("#genout");
   out.hidden = false;
-  out.textContent = `On your PC run:\n\nstart-padlink.cmd --room ${room}\n\nThen tap Connect here.`;
+  out.textContent = `On your PC run:\n\n.\\start-padlink.cmd --room ${room}\n\nThen tap Connect here.`;
 };
 
 async function detectMode() {
