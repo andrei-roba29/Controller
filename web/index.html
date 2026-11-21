@@ -59,12 +59,34 @@ display:grid;grid-template-columns:1fr 1.1fr 1fr;grid-template-rows:auto 1fr;gap
 border-bottom:1px solid #6b5320;font:13px/1.4 system-ui;padding:8px 12px;text-align:center}
 #pchint.show{display:block}
 #pchint b{color:#fff}
+#pchint b, #wrongdev b{color:#fff}
+#wrongdev{display:none;position:fixed;inset:0;z-index:30;background:var(--bg);flex-direction:column;
+gap:14px;align-items:center;justify-content:center;padding:32px;text-align:center}
+#wrongdev.show{display:flex}
+#wrongdev h2{margin:0;font-size:26px}
+#wrongdev p{margin:0;color:var(--mute);max-width:46ch;font-size:15px;line-height:1.5}
+#wrongdev .url{font:600 17px ui-monospace,monospace;color:var(--ink);background:var(--body);
+border:1px solid var(--edge);border-radius:10px;padding:10px 14px;word-break:break-all;
+user-select:text;-webkit-user-select:text;touch-action:auto}
+#wrongdev code{background:#2b2f3a;padding:1px 5px;border-radius:5px;font-size:13px;color:var(--ink)}
+#wrongdev button{border:1px solid var(--edge);background:var(--body);color:var(--mute);
+border-radius:10px;padding:9px 14px;font:600 13px system-ui}
 </style>
 </head>
 <body>
 <div id="rot">Rotate your phone to landscape to use the controller.</div>
 <div id="pchint">You are using a <b>computer</b>. This page is the controller — open this same
 link on your <b>phone</b>, then point the phone at the PC.</div>
+
+<div id="wrongdev">
+  <h2>This page is the controller</h2>
+  <p>It belongs on your <b>phone</b>. Your PC only needs the console window from
+  <code>start-padlink.cmd</code> — it should never show a gamepad.</p>
+  <p>Open this address in your phone's browser:</p>
+  <p class="url" id="phoneurl">…</p>
+  <p>Or scan the QR code the console prints.</p>
+  <button type="button" id="anyway">Use this computer anyway</button>
+</div>
 
 <form id="pair" onsubmit="return false">
   <h1>PadLink</h1>
@@ -322,14 +344,31 @@ function submit() {
   if (mode === "lan") connectLan(code); else connectRelay(code);
 }
 
-(async function boot() {
+function sget(k) { try { return sessionStorage.getItem(k) } catch (e) { return null } }
+function sset(k, v) { try { sessionStorage.setItem(k, v) } catch (e) {} }
+
+function isDesktop() {
+  return window.matchMedia("(pointer: fine)").matches && window.innerWidth >= 800;
+}
+
+async function boot() {
+  const hash = norm(location.hash.slice(1));
+
+  // A computer can run this page, but it is almost never what someone wants:
+  // the phone is the controller. Refuse by default instead of warning quietly.
+  if (isDesktop() && !sget("pc-ok")) {
+    $("#phoneurl").textContent = location.origin + location.pathname + (hash ? "#" + hash : "");
+    $("#wrongdev").classList.add("show");
+    return;
+  }
+  $("#wrongdev").classList.remove("show");
+
   mode = await detectMode();
   paintMode();
   $("#code").value = store("last:" + mode) || "";
   $("#go").disabled = false;
   $("#go").onclick = submit;
 
-  const hash = norm(location.hash.slice(1));
   if (hash) {
     history.replaceState(null, "", location.pathname + location.search);
     if (hash.length === (mode === "lan" ? 6 : 8)) {
@@ -337,7 +376,11 @@ function submit() {
       submit();
     }
   }
-})();
+}
+
+$("#anyway").onclick = () => { sset("pc-ok", "1"); boot(); };
+
+boot();
 
 // ------------------------------------------------------------------- buttons
 document.querySelectorAll("[data-b]").forEach(el => {
