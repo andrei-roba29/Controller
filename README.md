@@ -59,10 +59,19 @@ That is all Netlify needs — it never runs Python.
 
 ### 3. Pair
 
-Open the Netlify URL on the phone, type the room code, tap **Connect**, rotate to
-landscape. The code is remembered per device.
+The agent prints a link and a QR code for the current room. **Scan it with the
+phone camera** (or open the Netlify URL and type the code), tap **Connect**,
+rotate to landscape. The code is remembered per device.
 
-You can also share a direct link: `https://your-site.netlify.app/#K7M2QX9P`.
+> The controller page lives on the **phone**. Opening it in the PC's browser also
+> works, but then you are driving the pad from the PC — which is usually not what
+> you want. The PC only needs the console window.
+
+The link points at the address in `web/config.json` → `siteUrl`. Set it once to
+your deployed site (already set for this repo) and every run prints a scannable
+code. You can also pass it per run with `--site`.
+
+Shareable link form: `https://your-site.netlify.app/#K7M2QX9P`.
 
 ## Local Wi-Fi mode (optional, lower latency)
 
