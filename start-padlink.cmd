@@ -30,5 +30,10 @@ if errorlevel 1 (
 )
 
 ".venv\Scripts\python.exe" agent.py %*
+if errorlevel 1 (
+  echo.
+  echo The agent stopped with an error. Run "start-padlink.cmd --check"
+  echo for a full report of what is missing.
+)
 echo.
 pause

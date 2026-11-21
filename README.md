@@ -78,6 +78,7 @@ to the WebSocket transport automatically.
 | `--site https://your-site.netlify.app` | Print a ready-to-open pairing link |
 | `--lan` | Local Wi-Fi mode instead of the relay |
 | `--pin 123456` | Fixed LAN PIN |
+| `--check` | Report on Python, dependencies, the ViGEmBus driver and the relay |
 | `--dry-run` | Don't touch vgamepad, just print input (works on any OS) |
 | `--verbose` | Log every websocket frame |
 
@@ -105,11 +106,23 @@ hours of active play.
 
 ## Troubleshooting
 
+**No room code appears anywhere** — the agent prints the code as the very first
+thing it does, so if you never saw it the window closed before starting. Run:
+
+```
+start-padlink.cmd --check
+```
+
+It reports Python, the three dependencies, the ViGEmBus driver and whether the
+relay is reachable. Alternatively, open the PadLink site, tap
+**"No code on your PC?" → "Create a code on this phone"**, then start the PC with
+`start-padlink.cmd --room <CODE>`.
+
+**The phone says "PC not responding"** — the agent is running but in a different
+room: compare the codes, they are case-insensitive.
+
 **`Could not create the virtual controller`** — the ViGEmBus driver is missing.
 Install it from the link above and reboot.
-
-**Page says "PC not responding"** — the agent is not in the same room. Compare the
-room code in the terminal with the one you typed; codes are case-insensitive.
 
 **Page says "Relay error" / `room rejected ... Unauthorized`** — the Realtime
 policies are missing on the Supabase project. Run `supabase.sql` in the SQL

@@ -299,6 +299,90 @@ def banner(lines: list[str]) -> None:
     print("=" * width + "\n", flush=True)
 
 
+def print_code_block(room: str, site: str) -> None:
+    """Printed before anything can fail, so the code is always on screen."""
+    lines = ["PadLink", f"Room code:  {room}"]
+    if site:
+        lines.append(f"Open:       {site.rstrip('/')}/#{room}")
+    else:
+        lines.append("Open the PadLink site on your phone and type this code.")
+    banner(lines)
+
+
+def _probe_realtime(base: str, key: str) -> tuple[bool, str]:
+    import websockets
+
+    url = (base.rstrip("/").replace("https://", "wss://", 1)
+           .replace("http://", "ws://", 1))
+    url = f"{url}/realtime/v1/websocket?apikey={quote(key)}&vsn=1.0.0"
+
+    async def probe() -> None:
+        async with websockets.connect(url, open_timeout=8) as ws:
+            await ws.close()
+
+    try:
+        asyncio.run(probe())
+        return True, "reachable"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"unreachable ({type(exc).__name__})"
+
+
+def run_check(cfg: dict, args) -> int:
+    """`--check`: a printable report of everything PadLink needs."""
+    import importlib
+
+    rows: list[tuple[str, str, bool]] = []
+
+    v = sys.version_info
+    rows.append(("Python", f"{v.major}.{v.minor}.{v.micro} (need 3.10+)", v >= (3, 10)))
+
+    for module in ("aiohttp", "websockets", "vgamepad"):
+        try:
+            importlib.import_module(module)
+            rows.append((module, "installed", True))
+        except Exception as exc:  # noqa: BLE001
+            rows.append((module, f"missing ({type(exc).__name__})", False))
+
+    if sys.platform == "win32":
+        import subprocess
+
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            out = subprocess.run(["sc", "query", "ViGEmBus"], capture_output=True,
+                                 text=True, creationflags=flags).stdout.upper()
+        except OSError:
+            out = ""
+        driver = "RUNNING" in out
+        rows.append(("ViGEmBus driver", "running" if driver else "not installed", driver))
+    else:
+        rows.append(("ViGEmBus driver", "n/a (Windows only)", True))
+
+    key = args.api_key or cfg.get("supabaseAnonKey") or ""
+    base = args.realtime_url or cfg.get("supabaseUrl") or DEFAULT_REALTIME
+    if key:
+        ok, detail = _probe_realtime(base, key)
+        rows.append(("Supabase relay", f"{detail} - {base}", ok))
+    else:
+        rows.append(("Supabase relay", "no anon key in web/config.json", False))
+
+    width = max(len(row[0]) for row in rows) + 2
+    print("\nPadLink check\n")
+    for label, value, ok in rows:
+        mark = "ok  " if ok else "FAIL"
+        print(f"  [{mark}] {label:<{width}}{value}")
+
+    failed = [row for row in rows if not row[2]]
+    print()
+    if not failed:
+        print("  All good. Run start-padlink.cmd to play.", flush=True)
+        return 0
+    print("  Fix the FAIL lines above, then run start-padlink.cmd --check again.", flush=True)
+    if any(row[0] == "ViGEmBus driver" and not row[2] for row in failed):
+        print("  ViGEmBus: https://github.com/nefarius/ViGEmBus/releases "
+              "(run the .msi, then reboot)", flush=True)
+    return 1
+
+
 def main() -> None:
     cfg = load_config()
     parser = argparse.ArgumentParser(description="PadLink PC agent")
@@ -312,23 +396,28 @@ def main() -> None:
     parser.add_argument("--site", help="public URL of the PWA, printed with the room code")
     parser.add_argument("--realtime-url", default=None, help="override the Supabase project URL")
     parser.add_argument("--api-key", default=None, help="override the Supabase anon key")
+    parser.add_argument("--check", action="store_true",
+                        help="check Python, dependencies, driver and relay, then exit")
     parser.add_argument("--dry-run", action="store_true",
                         help="don't touch vgamepad, just print the input state")
     parser.add_argument("--verbose", action="store_true", help="log every websocket frame")
     args = parser.parse_args()
 
-    try:
-        pad = Pad(dry_run=args.dry_run)
-    except Exception as exc:  # noqa: BLE001
-        print("Could not create the virtual controller:", exc, flush=True)
-        print("Install the ViGEmBus driver: https://github.com/nefarius/ViGEmBus/releases",
-              flush=True)
-        raise SystemExit(1)
+    if args.check:
+        raise SystemExit(run_check(cfg, args))
 
-    session = Session(pad)
+    site = args.site or cfg.get("siteUrl") or ""
 
     if args.lan:
-        run_lan(args, session, args.pin or new_pin())
+        session_pad = None
+        try:
+            session_pad = Pad(dry_run=args.dry_run)
+        except Exception as exc:  # noqa: BLE001
+            print("Could not create the virtual controller:", exc, flush=True)
+            print("Install the ViGEmBus driver: "
+                  "https://github.com/nefarius/ViGEmBus/releases", flush=True)
+            raise SystemExit(1)
+        run_lan(args, Session(session_pad), args.pin or new_pin())
         return
 
     room = (args.room or new_room_code()).upper()
@@ -336,19 +425,31 @@ def main() -> None:
         print(f"\"{room}\" is not a valid room code: it needs 8 characters from 0-9 and\n"
               "A-Z, excluding I, L, O and U (they are easy to mix up).", flush=True)
         raise SystemExit(1)
-    site = args.site or cfg.get("siteUrl") or ""
-    lines = ["PadLink is running", f"Room code:  {room}"]
-    if site:
-        lines.append(f"Open:       {site.rstrip('/')}/#{room}")
-    else:
-        lines.append("Open the PadLink site on your phone and enter the room code.")
-    banner(lines)
 
-    api_key = args.api_key or cfg.get("supabaseAnonKey") or ""
-    if not api_key:
-        print("No Supabase anon key found in web/config.json (or --api-key).", flush=True)
+    # The code goes on screen before anything else can fail.
+    print_code_block(room, site)
+
+    try:
+        pad = Pad(dry_run=args.dry_run)
+        print(f"  Virtual controller: {'dry run (no driver needed)' if args.dry_run else 'ready'}",
+              flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  Virtual controller: FAILED - {type(exc).__name__}: {exc}", flush=True)
+        print("\nThe ViGEmBus driver is missing, so Windows has no virtual controller.\n"
+              "  1. Download it:  https://github.com/nefarius/ViGEmBus/releases\n"
+              "  2. Run ViGEmBus_*_x64.msi, then reboot Windows\n"
+              "  3. Confirm with: start-padlink.cmd --check\n"
+              "\nTo test the phone side without the driver: "
+              "start-padlink.cmd --dry-run", flush=True)
         raise SystemExit(1)
 
+    session = Session(pad)
+    api_key = args.api_key or cfg.get("supabaseAnonKey") or ""
+    if not api_key:
+        print("  Relay:              FAILED - no anon key in web/config.json", flush=True)
+        raise SystemExit(1)
+
+    print("  Relay:              connecting...", flush=True)
     relay = Relay(args.realtime_url or cfg.get("supabaseUrl") or DEFAULT_REALTIME,
                   api_key, room, session, verbose=args.verbose)
     try:
