@@ -305,6 +305,7 @@ def print_qr(url: str) -> None:
     try:
         import qrcode
     except ImportError:
+        print("  (no QR code: run .\\start-padlink.cmd once to install qrcode)\n", flush=True)
         return
     try:
         qr = qrcode.QRCode(border=1)
