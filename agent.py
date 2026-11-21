@@ -35,7 +35,7 @@ from pad import Pad, new_pin, new_room_code
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 DEFAULT_REALTIME = "https://ljvafmdhcpxbtstaljqb.supabase.co"
 HEARTBEAT_EVERY = 24.0
 PC_ALIVE_EVERY = 2.0
@@ -300,14 +300,34 @@ def banner(lines: list[str]) -> None:
     print("=" * width + "\n", flush=True)
 
 
+def print_qr(url: str) -> None:
+    """Optional: a scannable code so nobody has to type a URL on a phone."""
+    try:
+        import qrcode
+    except ImportError:
+        return
+    try:
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(url)
+        qr.make(fit=True)
+        print("  Scan with your phone camera (or type the address):\n")
+        qr.print_ascii(invert=True)
+        print(f"  {url}\n", flush=True)
+    except Exception:  # noqa: BLE001 - a QR is never worth a crash
+        pass
+
+
 def print_code_block(room: str, site: str) -> None:
     """Printed before anything can fail, so the code is always on screen."""
     lines = [f"PadLink {VERSION}", f"Room code:  {room}"]
     if site:
-        lines.append(f"Open:       {site.rstrip('/')}/#{room}")
+        # The page is the controller: it belongs on the phone, not on this PC.
+        lines.append(f"On your PHONE: {site.rstrip('/')}/#{room}")
     else:
         lines.append("Open the PadLink site on your phone and type this code.")
     banner(lines)
+    if site:
+        print_qr(f"{site.rstrip('/')}/#{room}")
 
 
 def _probe_realtime(base: str, key: str) -> tuple[bool, str]:
@@ -385,6 +405,11 @@ def run_check(cfg: dict, args) -> int:
 
 
 def main() -> None:
+    if sys.platform == "win32":
+        try:  # QR codes use block characters
+            sys.stdout.reconfigure(encoding="utf-8")
+        except (AttributeError, OSError):
+            pass
     cfg = load_config()
     parser = argparse.ArgumentParser(description="PadLink PC agent")
     parser.add_argument("--lan", action="store_true",
