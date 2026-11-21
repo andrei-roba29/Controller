@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#16181f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>PadLink</title>
+<style>
+:root{--bg:#16181f;--body:#22252e;--edge:#343845;--ink:#e8eaf0;--mute:#8b90a0;
+--tri:#3fbf8f;--cir:#e5484d;--cro:#4c8dff;--squ:#e879b9;--hit:#ffffff22}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:16px system-ui,sans-serif;overflow:hidden}
+#pair{position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;padding:20px;text-align:center}
+#pair h1{margin:0;font-size:28px}
+#pair p{margin:0;color:var(--mute);max-width:32ch}
+#code{font:600 30px ui-monospace,monospace;letter-spacing:.28em;width:10ch;text-align:center;padding:10px;border-radius:12px;border:2px solid var(--edge);background:var(--body);color:var(--ink);touch-action:auto;user-select:text;-webkit-user-select:text;text-transform:uppercase}
+#go{font:600 18px system-ui;padding:12px 32px;border:0;border-radius:12px;background:var(--cro);color:#fff}
+#go:disabled{opacity:.5}
+#err{color:var(--cir);min-height:1.4em}
+#mode{font-size:12px;color:var(--mute);letter-spacing:.04em;text-transform:uppercase}
+#pad{position:fixed;inset:0;display:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+#shell{position:absolute;inset:14px;border-radius:44px;background:var(--body);border:2px solid var(--edge);
+display:grid;grid-template-columns:1fr 1.1fr 1fr;grid-template-rows:auto 1fr;gap:8px;padding:16px 28px}
+.shoulder{display:flex;gap:10px;grid-row:1}
+.shoulder.l{grid-column:1}.shoulder.r{grid-column:3;justify-content:flex-end}
+.btn{border:2px solid var(--edge);background:#2b2f3a;border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-weight:600;position:relative}
+.btn.on{background:#fff3;border-color:#fff;transform:scale(.95)}
+.sh{width:84px;height:40px}
+.col{display:flex;flex-direction:column;align-items:center;justify-content:space-around;grid-row:2}
+.mid{grid-column:2;grid-row:1/3;display:flex;flex-direction:column;align-items:center;gap:12px;justify-content:center}
+#touchpad{width:100%;max-width:300px;height:44%;border-radius:18px;color:var(--mute);font-weight:400;font-size:14px}
+.row{display:flex;gap:16px}
+.sm{width:62px;height:30px;font-size:12px;border-radius:15px}
+#ps{width:48px;height:48px;border-radius:50%}
+#status{font-size:12px;color:var(--mute);display:flex;gap:6px;align-items:center}
+#dot{width:8px;height:8px;border-radius:50%;background:var(--cir)}
+.dpad{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(3,56px);gap:2px}
+.dpad .btn{border-radius:12px;font-size:20px}
+.faces{position:relative;width:176px;height:176px}
+.faces .btn{position:absolute;width:62px;height:62px;border-radius:50%;font-size:26px}
+.stick{width:128px;height:128px;border-radius:50%;background:#171920;border:2px solid var(--edge);position:relative}
+.knob{position:absolute;left:50%;top:50%;width:70px;height:70px;margin:-35px 0 0 -35px;border-radius:50%;background:#3a3f4e;border:2px solid #555b6e;pointer-events:none}
+.l3{width:44px;height:26px;font-size:11px;border-radius:13px}
+.sg{display:flex;flex-direction:column;align-items:center;gap:6px}
+@media (max-height:420px){.stick{width:104px;height:104px}.faces{transform:scale(.85)}.dpad{transform:scale(.85)}}
+@media (orientation:portrait){#rot{display:flex}}
+#rot{display:none;position:fixed;inset:0;background:var(--bg);z-index:9;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mute)}
+</style>
+</head>
+<body>
+<div id="rot">Rotate your phone to landscape to use the controller.</div>
+
+<form id="pair" onsubmit="return false">
+  <h1>PadLink</h1>
+  <div id="mode">checking…</div>
+  <p id="hint">Enter the code shown on your PC.</p>
+  <input id="code" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Pairing code" placeholder="········">
+  <button id="go">Connect</button>
+  <div id="err" role="alert"></div>
+</form>
+
+<div id="pad">
+ <div id="shell">
+  <div class="shoulder l"><div class="btn sh" data-b="l2">L2</div><div class="btn sh" data-b="l1">L1</div></div>
+  <div class="shoulder r"><div class="btn sh" data-b="r1">R1</div><div class="btn sh" data-b="r2">R2</div></div>
+
+  <div class="col" style="grid-column:1">
+    <div class="dpad">
+      <span></span><div class="btn" data-b="up">▲</div><span></span>
+      <div class="btn" data-b="left">◀</div><span></span><div class="btn" data-b="right">▶</div>
+      <span></span><div class="btn" data-b="down">▼</div><span></span>
+    </div>
+    <div class="sg"><div class="stick" data-s="l"><div class="knob"></div></div><div class="btn l3" data-b="l3">L3</div></div>
+  </div>
+
+  <div class="mid">
+    <div class="row"><div class="btn sm" data-b="share">Share</div><div class="btn sm" data-b="options">Options</div></div>
+    <div class="btn" id="touchpad" data-b="touchpad">Touchpad click</div>
+    <div class="btn" id="ps" data-b="ps">PS</div>
+    <div id="status"><span id="dot"></span><span id="stxt">Offline</span></div>
+  </div>
+
+  <div class="col" style="grid-column:3">
+    <div class="faces">
+      <div class="btn" data-b="triangle" style="left:57px;top:0;color:var(--tri)">△</div>
+      <div class="btn" data-b="circle" style="right:0;top:57px;color:var(--cir)">○</div>
+      <div class="btn" data-b="cross" style="left:57px;bottom:0;color:var(--cro)">✕</div>
+      <div class="btn" data-b="square" style="left:0;top:57px;color:var(--squ)">□</div>
+    </div>
+    <div class="sg"><div class="stick" data-s="r"><div class="knob"></div></div><div class="btn l3" data-b="r3">R3</div></div>
+  </div>
+ </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const CFG = {supabaseUrl: "", supabaseAnonKey: "", siteUrl: ""};
+const st = {b: new Set(), lx: 128, ly: 128, rx: 128, ry: 128};
+let mode = null;          // "lan" | "relay"
+let link = null;          // { send(obj) }
+let code = "";            // PIN (lan) or room code (relay)
+let lastSent = 0, flushTimer = null, pcTimer = null, retry = 0, wake = null;
+
+// ------------------------------------------------------------------ helpers
+function store(k, v) {
+  try { return v === undefined ? localStorage.getItem(k) : localStorage.setItem(k, v) } catch (e) {}
+}
+function norm(v) { return (v || "").toUpperCase().replace(/[^0-9A-Z]/g, "") }
+function snapshot() { return {b: [...st.b], lx: st.lx, ly: st.ly, rx: st.rx, ry: st.ry} }
+
+function setStatus(on, text) {
+  const dot = $("#dot");
+  if (dot) dot.style.background = on ? "var(--tri)" : "var(--cir)";
+  const label = $("#stxt");
+  if (label) label.textContent = text;
+}
+
+// 20 Hz ceiling: discrete taps go out immediately, stick movement is coalesced.
+function mark(force) {
+  if (!link) return;
+  const wait = 50 - (performance.now() - lastSent);
+  if (!force && wait > 0) {
+    if (!flushTimer) flushTimer = setTimeout(() => { flushTimer = null; flush(); }, wait);
+    return;
+  }
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  flush();
+}
+function flush() {
+  lastSent = performance.now();
+  if (link) link.send(snapshot());
+}
+
+function goFull() {
+  document.documentElement.requestFullscreen().catch(() => {});
+  try { screen.orientation.lock("landscape").catch(() => {}) } catch (e) {}
+  navigator.wakeLock?.request("screen").then(w => wake = w).catch(() => {});
+}
+
+function enterPad() {
+  $("#pair").style.display = "none";
+  $("#pad").style.display = "block";
+  setStatus(true, mode === "relay" ? "Connecting…" : "Connected");
+  store("last:" + mode, code);
+  goFull();
+}
+
+function backToPair(message) {
+  link = null;
+  if (pcTimer) { clearTimeout(pcTimer); pcTimer = null; }
+  $("#pad").style.display = "none";
+  $("#pair").style.display = "flex";
+  if (message) $("#err").textContent = message;
+  setStatus(false, "Offline");
+}
+
+// ------------------------------------------------------------------- LAN link
+function connectLan(pin) {
+  const scheme = location.protocol === "https:" ? "wss://" : "ws://";
+  const ws = new WebSocket(scheme + location.host + "/ws?pin=" + encodeURIComponent(pin));
+  link = {send: o => ws.readyState === 1 && ws.send(JSON.stringify(o))};
+  ws.onopen = () => { retry = 0; enterPad(); setStatus(true, "Connected"); };
+  ws.onclose = e => {
+    link = null;
+    if (e.code === 4001) { backToPair("Wrong PIN. Check the number on your PC."); return; }
+    if (e.code === 4002) { setStatus(false, "Another phone took over"); return; }
+    if ($("#pad").style.display !== "block") {
+      backToPair("Could not reach the PC. Is the agent still running?");
+      return;
+    }
+    setStatus(false, "Reconnecting…");
+    setTimeout(() => connectLan(pin), Math.min(3000, 500 * ++retry));
+  };
+}
+
+// ----------------------------------------------------------------- relay link
+async function connectRelay(room) {
+  if (!CFG.supabaseUrl || !CFG.supabaseAnonKey) {
+    $("#err").textContent = "This deployment is missing config.json.";
+    return;
+  }
+  $("#err").textContent = "";
+  setStatus(false, "Connecting…");
+  let mod;
+  try {
+    mod = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+  } catch (e) {
+    $("#err").textContent = "Could not load the relay library. Check your connection.";
+    return;
+  }
+  const client = mod.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {
+    auth: {persistSession: false, autoRefreshToken: false},
+    realtime: {params: {eventsPerSecond: 40}}
+  });
+  try { client.realtime.setAuth(CFG.supabaseAnonKey) } catch (e) {}
+
+  const chan = client.channel("padlink:" + room, {
+    config: {broadcast: {self: false, ack: false}, private: true}
+  });
+
+  const alive = () => {
+    setStatus(true, "Connected");
+    if (pcTimer) clearTimeout(pcTimer);
+    pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
+  };
+  chan.on("broadcast", {event: "pc-alive"}, alive);
+
+  chan.subscribe((status, err) => {
+    if (status === "SUBSCRIBED") {
+      link = {send: o => chan.send({type: "broadcast", event: "input", payload: o})};
+      if ($("#pad").style.display !== "block") enterPad();
+      setStatus(false, "Waiting for PC…");
+      pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
+    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+      link = null;
+      const detail = err ? " (" + (err.message || err) + ")" : "";
+      setStatus(false, "Relay error" + detail);
+      if ($("#pad").style.display !== "block") {
+        $("#err").textContent = "Could not join room " + room + "." + detail;
+      }
+    } else if (status === "CLOSED") {
+      link = null;
+      backToPair("Disconnected from the relay.");
+    }
+  });
+}
+
+// ------------------------------------------------------------------- startup
+function paintMode() {
+  const lan = mode === "lan";
+  $("#mode").textContent = lan ? "Direct · same Wi-Fi" : "Relay · over the internet";
+  $("#hint").textContent = lan
+    ? "Enter the 6-digit PIN shown on your PC."
+    : "Enter the 8-character room code shown on your PC.";
+  const input = $("#code");
+  input.maxLength = lan ? 6 : 8;
+  input.inputMode = lan ? "numeric" : "text";
+  input.placeholder = lan ? "000000" : "········";
+}
+
+async function detectMode() {
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 1800);
+    const res = await fetch("health", {cache: "no-store", signal: ctl.signal});
+    clearTimeout(timer);
+    if (res.ok) {
+      const body = await res.json();
+      if (body && body.app === "padlink") return "lan";
+    }
+  } catch (e) {}
+  try {
+    const res = await fetch("config.json", {cache: "no-store"});
+    if (res.ok) Object.assign(CFG, await res.json());
+  } catch (e) {}
+  return "relay";
+}
+
+function submit() {
+  const value = norm($("#code").value);
+  const want = mode === "lan" ? 6 : 8;
+  if (value.length !== want) {
+    $("#err").textContent = `The code has ${want} characters.`;
+    return;
+  }
+  code = value;
+  $("#err").textContent = "";
+  goFull();  // must happen inside the tap gesture to be granted
+  if (mode === "lan") connectLan(code); else connectRelay(code);
+}
+
+(async function boot() {
+  mode = await detectMode();
+  paintMode();
+  $("#code").value = store("last:" + mode) || "";
+  $("#go").disabled = false;
+  $("#go").onclick = submit;
+
+  const hash = norm(location.hash.slice(1));
+  if (hash) {
+    history.replaceState(null, "", location.pathname + location.search);
+    if (hash.length === (mode === "lan" ? 6 : 8)) {
+      $("#code").value = hash;
+      submit();
+    }
+  }
+})();
+
+// ------------------------------------------------------------------- buttons
+document.querySelectorAll("[data-b]").forEach(el => {
+  const name = el.dataset.b;
+  el.addEventListener("pointerdown", e => {
+    el.setPointerCapture(e.pointerId);
+    st.b.add(name);
+    el.classList.add("on");
+    navigator.vibrate && navigator.vibrate(8);
+    mark(true);
+  });
+  const up = () => { st.b.delete(name); el.classList.remove("on"); mark(true); };
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+});
+
+// --------------------------------------------------------------------- sticks
+document.querySelectorAll("[data-s]").forEach(el => {
+  const knob = el.querySelector(".knob"), side = el.dataset.s;
+  let id = null;
+  const move = e => {
+    const r = el.getBoundingClientRect(), R = r.width / 2;
+    let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R);
+    const d = Math.hypot(dx, dy);
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px,${dy}px)`;
+    st[side + "x"] = Math.round(128 + dx / R * 127);
+    st[side + "y"] = Math.round(128 + dy / R * 127);
+    mark(false);
+  };
+  const end = () => {
+    id = null;
+    knob.style.transform = "";
+    st[side + "x"] = st[side + "y"] = 128;
+    mark(true);
+  };
+  el.addEventListener("pointerdown", e => { id = e.pointerId; el.setPointerCapture(id); move(e); });
+  el.addEventListener("pointermove", e => { if (e.pointerId === id) move(e); });
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    st.b.clear();
+    st.lx = st.ly = st.rx = st.ry = 128;
+    document.querySelectorAll(".btn.on").forEach(b => b.classList.remove("on"));
+    flush();
+  } else if (wake) {
+    navigator.wakeLock.request("screen").then(w => wake = w).catch(() => {});
+  }
+});
+document.addEventListener("contextmenu", e => e.preventDefault());
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
