@@ -27,6 +27,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:16px s
 #go{font:600 18px system-ui;padding:12px 32px;border:0;border-radius:12px;background:var(--cro);color:#fff}
 #go:disabled{opacity:.5}
 #err{color:var(--cir);min-height:1.4em}
+#pstatus{color:var(--mute);font-size:13px;min-height:1.2em}
 #mode{font-size:12px;color:var(--mute);letter-spacing:.04em;text-transform:uppercase}
 #pad{position:fixed;inset:0;display:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 #shell{position:absolute;inset:14px;border-radius:44px;background:var(--body);border:2px solid var(--edge);
@@ -94,6 +95,7 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
   <label id="label" for="code">Room code from your PC</label>
   <input id="code" autocapitalize="characters" autocomplete="off" spellcheck="false" aria-label="Pairing code">
   <button id="go" disabled>Connect</button>
+  <div id="pstatus"></div>
   <div id="err" role="alert"></div>
   <p id="hint">Run <code>start-padlink.cmd</code> on your PC — the code appears in its window.</p>
   <details id="help">
@@ -141,6 +143,7 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
  </div>
 </div>
 
+<script src="relay.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const CFG = {supabaseUrl: "", supabaseAnonKey: "", siteUrl: ""};
@@ -197,6 +200,8 @@ function enterPad() {
 
 function backToPair(message) {
   link = null;
+  if (relayClient) { relayClient.close(); relayClient = null; }
+  setPairStatus("");
   if (pcTimer) { clearTimeout(pcTimer); pcTimer = null; }
   $("#pad").style.display = "none";
   $("#pair").style.display = "flex";
@@ -225,55 +230,61 @@ function connectLan(pin) {
 }
 
 // ----------------------------------------------------------------- relay link
-async function connectRelay(room) {
+function setPairStatus(text) {
+  const el = $("#pstatus");
+  if (el) el.textContent = text || "";
+}
+
+let relayClient = null;
+
+function connectRelay(room) {
   if (!CFG.supabaseUrl || !CFG.supabaseAnonKey) {
     $("#err").textContent = "This deployment is missing config.json.";
     return;
   }
-  $("#err").textContent = "";
-  setStatus(false, "Connecting…");
-  let mod;
-  try {
-    mod = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
-  } catch (e) {
-    $("#err").textContent = "Could not load the relay library. Check your connection.";
+  if (typeof PadLinkRelay !== "function") {
+    $("#err").textContent = "relay.js failed to load. Reload the page.";
     return;
   }
-  const client = mod.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {
-    auth: {persistSession: false, autoRefreshToken: false},
-    realtime: {params: {eventsPerSecond: 40}}
-  });
-  try { client.realtime.setAuth(CFG.supabaseAnonKey) } catch (e) {}
-
-  const chan = client.channel("padlink:" + room, {
-    config: {broadcast: {self: false, ack: false}, private: true}
-  });
+  $("#err").textContent = "";
+  setPairStatus("Opening connection…");
 
   const alive = () => {
     setStatus(true, "Connected");
     if (pcTimer) clearTimeout(pcTimer);
     pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
   };
-  chan.on("broadcast", {event: "pc-alive"}, alive);
 
-  chan.subscribe((status, err) => {
-    if (status === "SUBSCRIBED") {
-      link = {send: o => chan.send({type: "broadcast", event: "input", payload: o})};
-      if ($("#pad").style.display !== "block") enterPad();
-      setStatus(false, "Waiting for PC…");
-      pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
-    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-      link = null;
-      const detail = err ? " (" + (err.message || err) + ")" : "";
-      setStatus(false, "Relay error" + detail);
-      if ($("#pad").style.display !== "block") {
-        $("#err").textContent = "Could not join room " + room + "." + detail;
+  relayClient = new PadLinkRelay({
+    url: CFG.supabaseUrl,
+    key: CFG.supabaseAnonKey,
+    room: room,
+    onStatus: state => {
+      if (state === "connecting") setPairStatus("Connecting to the relay…");
+      else if (state === "joining") setPairStatus("Joining room " + room + "…");
+      else if (state === "joined") {
+        setPairStatus("");
+        link = {send: o => relayClient.input(o)};
+        if ($("#pad").style.display !== "block") enterPad();
+        setStatus(false, "Waiting for PC…");
+        if (pcTimer) clearTimeout(pcTimer);
+        pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
+      } else if (state === "reconnecting") {
+        setStatus(false, "Reconnecting…");
+      } else if (state === "closed") {
+        link = null;
+        backToPair("Disconnected from the relay.");
       }
-    } else if (status === "CLOSED") {
+    },
+    onAlive: alive,
+    onError: message => {
       link = null;
-      backToPair("Disconnected from the relay.");
+      setPairStatus("");
+      $("#err").textContent = message;
+      if ($("#pad").style.display !== "block") setStatus(false, "Relay error");
     }
   });
+  relayClient.connect();
 }
 
 // A desktop browser works, but it is almost never what the user wants: the
@@ -327,7 +338,10 @@ async function detectMode() {
     }
   } catch (e) {}
   try {
-    const res = await fetch("config.json", {cache: "no-store"});
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 5000);
+    const res = await fetch("config.json", {cache: "no-store", signal: ctl.signal});
+    clearTimeout(timer);
     if (res.ok) Object.assign(CFG, await res.json());
   } catch (e) {}
   return "relay";
@@ -365,7 +379,8 @@ async function boot() {
   }
   $("#wrongdev").classList.remove("show");
 
-  mode = await detectMode();
+  try { mode = await detectMode(); } catch (e) {}
+  mode = mode || "relay";
   paintMode();
   $("#code").value = store("last:" + mode) || "";
   $("#go").disabled = false;
@@ -381,6 +396,9 @@ async function boot() {
 }
 
 $("#anyway").onclick = () => { sset("pc-ok", "1"); boot(); };
+
+// Safety net: whatever happens above, Connect must never stay disabled.
+setTimeout(() => { const b = $("#go"); if (b) b.disabled = false; }, 6000);
 
 boot();
 
