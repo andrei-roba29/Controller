@@ -35,6 +35,7 @@ from pad import Pad, new_pin, new_room_code
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
+VERSION = "1.1.0"
 DEFAULT_REALTIME = "https://ljvafmdhcpxbtstaljqb.supabase.co"
 HEARTBEAT_EVERY = 24.0
 PC_ALIVE_EVERY = 2.0
@@ -301,7 +302,7 @@ def banner(lines: list[str]) -> None:
 
 def print_code_block(room: str, site: str) -> None:
     """Printed before anything can fail, so the code is always on screen."""
-    lines = ["PadLink", f"Room code:  {room}"]
+    lines = [f"PadLink {VERSION}", f"Room code:  {room}"]
     if site:
         lines.append(f"Open:       {site.rstrip('/')}/#{room}")
     else:
@@ -366,7 +367,7 @@ def run_check(cfg: dict, args) -> int:
         rows.append(("Supabase relay", "no anon key in web/config.json", False))
 
     width = max(len(row[0]) for row in rows) + 2
-    print("\nPadLink check\n")
+    print(f"\nPadLink check (agent {VERSION})\n")
     for label, value, ok in rows:
         mark = "ok  " if ok else "FAIL"
         print(f"  [{mark}] {label:<{width}}{value}")

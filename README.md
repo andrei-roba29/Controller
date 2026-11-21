@@ -110,7 +110,23 @@ hours of active play.
   visible only in your terminal, and only while the agent runs.
 - The agent only reads gamepad input; it never exposes your PC to the network.
 
+## Updating
+
+The agent prints its version (`PadLink 1.1.0`) in the startup box and in the
+`--check` report, so you can always tell which build you are running.
+
+- **Downloaded as a ZIP** (the folder is called `Controller-main`): GitHub will
+  not update it for you. Download
+  <https://github.com/andrei-roba29/Controller/archive/refs/heads/main.zip> and
+  extract it over the same folder — `Expand-Archive Controller-main.zip -DestinationPath . -Force`
+  from the parent folder. `.venv` is left alone, so the update is quick.
+- **Cloned with git**: `git pull` in the folder, then re-run the launcher.
+
+If a flag you read about is missing from `agent.py --help`, the copy is out of
+date.
+
 ## Troubleshooting
+
 
 **PowerShell: "The term 'start-padlink.cmd' is not recognized"** — PowerShell
 does not run programs from the current folder. Prefix it:
