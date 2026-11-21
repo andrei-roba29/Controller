@@ -127,7 +127,7 @@ async function run() {
   line("info", "opening websocket: " + base + "/realtime/v1/websocket");
 
   const started = Date.now();
-  let ws, joined = false, alive = false;
+  let ws, joined = false, alive = false, roundTrip = false;
   try {
     ws = new WebSocket(url);
   } catch (e) {
@@ -141,7 +141,7 @@ async function run() {
       ws.send(JSON.stringify({
         topic: "realtime:padlink:" + room, event: "phx_join", ref: "1", join_ref: "1",
         payload: {
-          config: {broadcast: {ack: false, self: false}, presence: {key: ""},
+          config: {broadcast: {ack: false, self: true}, presence: {key: ""},
                    postgres_changes: [], private: true},
           access_token: cfg.supabaseAnonKey
         }
@@ -155,13 +155,23 @@ async function run() {
         const status = (msg.payload || {}).status;
         if (status === "ok") {
           joined = true;
-          line("ok", "room joined — authorization works");
+          line("ok", "room joined");
+          // A join can succeed while every send is silently dropped, so bounce
+          // one message off the relay and see if it comes back.
+          ws.send(JSON.stringify({
+            topic: "realtime:padlink:" + room, event: "broadcast", ref: "2", join_ref: "1",
+            payload: {type: "broadcast", event: "diag-ping", payload: {t: Date.now()}}
+          }));
+          line("info", "test broadcast sent — waiting for it to come back…");
         } else {
           line("bad", "room rejected: " + JSON.stringify(msg.payload).slice(0, 300));
         }
       } else if (msg.event === "broadcast") {
         const name = (msg.payload || {}).event;
-        if (name === "pc-alive") {
+        if (name === "diag-ping") {
+          roundTrip = true;
+          line("ok", "round-trip works — this device can send AND receive");
+        } else if (name === "pc-alive") {
           alive = true;
           line("ok", "PC keepalive received — the PC agent is in this room");
           resolve("ok");
@@ -176,14 +186,25 @@ async function run() {
       line("warn", "websocket closed: code " + ev.code + (ev.reason ? " (" + ev.reason + ")" : ""));
       resolve(joined ? "noalive" : "dead");
     };
-    setTimeout(() => resolve(joined ? "noalive" : "dead"), 12000);
+    setTimeout(() => {
+      if (!joined) return resolve("dead");
+      if (roundTrip) return resolve("noalive");
+      line("bad", "the relay never delivered our own broadcast — send is not authorized");
+      resolve("noecho");
+    }, 12000);
   });
 
   const outcome = await result;
   try { ws.close(); } catch (e) {}
 
   if (outcome === "ok") return finish("Everything works: the relay answers and the PC is present.", "ok");
-  if (outcome === "noalive") return finish("Joined the room, but no PC keepalive — the PC is in a different room, or its agent stopped.", "warn");
+  if (outcome === "noalive") {
+    line("bad", "no pc-alive from room " + room + " — the PC agent is stopped or using another code");
+    return finish("Your phone is fine: it joined the room and its messages round-trip. " +
+      "But no PC is answering in " + room + ". Keep the agent window open and copy the code " +
+      "from THAT window (this build makes a new code every run).", "warn");
+  }
+  if (outcome === "noecho") return finish("Joined, but broadcasts are not being delivered — check the realtime.messages policies.", "bad");
   return finish("Could not reach or join the relay from this device.", "bad");
 }
 

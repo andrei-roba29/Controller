@@ -59,6 +59,12 @@ display:grid;grid-template-columns:1fr 1.1fr 1fr;grid-template-rows:auto 1fr;gap
 @media (max-height:420px){.stick{width:104px;height:104px}.faces{transform:scale(.85)}.dpad{transform:scale(.85)}}
 @media (orientation:portrait){body.playing #rot{display:flex}}
 #rot{display:none;position:fixed;inset:0;background:var(--bg);z-index:9;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mute)}
+#toast{display:none;position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:40;
+max-width:92vw;padding:10px 14px;border-radius:10px;font:600 13px system-ui;text-align:center;
+background:#3a2d10;color:#ffd479;border:1px solid #6b5320;box-shadow:0 4px 16px #0008}
+#toast.show{display:block}
+#toast.ok{background:#0f2e23;color:var(--tri);border-color:#1f5c47}
+#toast.bad{background:#3a1214;color:#ff9a9e;border-color:#6b2226}
 #pchint{display:none;position:fixed;top:0;left:0;right:0;z-index:20;background:#3a2d10;color:#ffd479;
 border-bottom:1px solid #6b5320;font:13px/1.4 system-ui;padding:8px 12px;text-align:center}
 #pchint.show{display:block}
@@ -79,6 +85,7 @@ border-radius:10px;padding:9px 14px;font:600 13px system-ui}
 </head>
 <body>
 <div id="rot">Rotate your phone to landscape to use the controller.</div>
+<div id="toast"></div>
 <div id="pchint">You are using a <b>computer</b>. This page is the controller — open this same
 link on your <b>phone</b>, then point the phone at the PC.</div>
 
@@ -235,6 +242,17 @@ function connectLan(pin) {
 }
 
 // ----------------------------------------------------------------- relay link
+let toastTimer = null;
+function toast(text, kind) {
+  const el = $("#toast");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "show " + (kind || "");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ""; toastTimer = null; },
+    kind === "ok" ? 2500 : 9000);
+}
+
 function setPairStatus(text) {
   const el = $("#pstatus");
   if (el) el.textContent = text || "";
@@ -262,11 +280,13 @@ function connectRelay(room) {
       setPairStatus("");
       $("#err").textContent =
         "No answer from the relay after 15 seconds. Open diagnostics to see why.";
+      toast("No answer from the relay — open Diagnostics", "bad");
     }
   }, 15000);
 
   const alive = () => {
     setStatus(true, "Connected");
+    toast("Connected to your PC", "ok");
     if (pcTimer) clearTimeout(pcTimer);
     pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
   };
@@ -284,6 +304,7 @@ function connectRelay(room) {
         link = {send: o => relayClient.input(o)};
         if ($("#pad").style.display !== "block") enterPad();
         setStatus(false, "Waiting for PC…");
+        toast("Room " + room + " joined — waiting for your PC…", "warn");
         if (pcTimer) clearTimeout(pcTimer);
         pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
       } else if (state === "reconnecting") {
@@ -299,6 +320,7 @@ function connectRelay(room) {
       if (relayStall) { clearTimeout(relayStall); relayStall = null; }
       setPairStatus("");
       $("#err").textContent = message;
+      toast(message, "bad");
       if ($("#pad").style.display !== "block") setStatus(false, "Relay error");
     }
   });
