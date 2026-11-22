@@ -18,7 +18,7 @@ async function run(desktop) {
     location:{hash:'#K7M2QX9P', origin:'https://example.com', pathname:'/',search:''},
     navigator:{}, screen:{}, history:{replaceState(){}},
     localStorage:{getItem(){},setItem(){}}, sessionStorage:{getItem(){},setItem(){}},
-    setTimeout(){},clearTimeout(){}, AbortController,
+    setInterval(){},setTimeout(){},clearTimeout(){}, AbortController,
     fetch:async () => { fetches++; return {ok:false}; },
     WebSocket:function(){sockets++;}, console
   };
