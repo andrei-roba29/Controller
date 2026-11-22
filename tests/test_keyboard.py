@@ -71,3 +71,15 @@ class KeyboardTests(unittest.TestCase):
         self.assertEqual(reply['mappings']['options'], 'esc')
         self.assertEqual(Output(self.path, dry_run=True).settings['mappings']['options'], 'esc')
         self.assertIn('error', settings_reply(self.output, {'id': 'bad', 'action': 'save', 'settings': {}}))
+
+    def test_output_failure_keeps_settings_available_and_recoverable(self):
+        with patch.object(Output, 'prepare', side_effect=RuntimeError('missing driver')):
+            output = Output(self.path, dry_run=True, tolerate_error=True)
+        self.assertEqual(output.error, 'missing driver')
+        self.assertEqual(settings_reply(output, {'id':'1','action':'get'})['mode'], 'keyboard')
+        output.apply({'b':['cross']})
+        self.assertEqual(output.held, set())
+        output.configure({'mode':'keyboard','mappings':{'cross':'x'}})
+        self.assertIsNone(output.error)
+        output.apply({'b':['cross']})
+        self.assertEqual(output.held, {'x'})

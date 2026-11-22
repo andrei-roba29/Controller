@@ -127,6 +127,7 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
 <label>Output <select id="phoneMode"><option value="keyboard">Keyboard</option><option value="gamepad">Virtual gamepad</option></select></label>
 <div id="phoneMappings" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0"></div>
 <button id="savePhoneSettings" disabled>Save</button> <button id="reloadPhoneSettings">Reload</button> <button id="closeSettings">Back to controller</button>
+<p id="pcDetails"></p>
 <p id="settingsMessage" role="status"></p></div>
 <div id="pad">
  <div id="padViewport">
@@ -270,6 +271,7 @@ function setPairStatus(text) {
 }
 
 let relayClient = null;
+let pcInfo = null, pcSeenAt = 0, settingsLoaded = false;
 
 function connectRelay(room) {
   if (!CFG.supabaseUrl || !CFG.supabaseAnonKey) {
@@ -283,8 +285,11 @@ function connectRelay(room) {
   $("#err").textContent = "";
   setPairStatus("Opening connection…");
 
-  const alive = () => {
-    setStatus(true, "Connected");
+  const alive = info => {
+    pcInfo = info; pcSeenAt = Date.now();
+    $("#pcDetails").textContent = "PC agent: " + (info.agentVersion || "version not reported (possibly an older copy)") +
+      (info.mode ? " · " + info.mode + " mode" : "") + (info.outputError ? " · Output unavailable: " + info.outputError : "");
+    setStatus(!info.outputError, info.outputError ? "PC output error — open Settings" : "Connected");
     if (pcTimer) clearTimeout(pcTimer);
     pcTimer = setTimeout(() => setStatus(false, "PC not responding"), 6000);
   };
@@ -444,8 +449,18 @@ setInterval(() => { if (link && !document.hidden) flush(); }, 400);
 
 // Settings travel through the paired channel, never to localhost on the phone.
 let settingsRequest = null, settingsTimer = null;
+function settingsFailure(action) {
+  if (mode === 'relay' && (!pcSeenAt || Date.now() - pcSeenAt > 6500)) {
+    return "No PC heartbeat in this room. On the PC, open http://127.0.0.1:8765/host, check its status and compare the room code. Start the agent if it is stopped.";
+  }
+  if (mode === 'relay' && !pcInfo?.capabilities?.includes('settings-v1')) {
+    return "PC heartbeat received, but this agent has not reported settings support. It may be an older running copy. On the PC, stop the old PadLink console (Ctrl+C), update the local PadLink folder, then double-click start-padlink.cmd. Updating the website alone does not update the PC agent.";
+  }
+  return (action === 'save' ? "Save was not confirmed; it may have reached the PC. Tap Reload to check before saving again. " : "The PC did not return settings after retries. ") +
+    "On the PC, open http://127.0.0.1:8765/host and check status/errors. This address is for the PC, not the phone.";
+}
 function requestSettings(action) {
-  if (!link?.settings) { $("#settingsMessage").textContent = "Not connected to the PC."; return; }
+  if (!link?.settings) { $("#settingsMessage").textContent = "Not connected to the PC. Reconnect before opening Settings."; return; }
   const id = String(Date.now()) + Math.random();
   settingsRequest = id;
   $("#savePhoneSettings").disabled = true;
@@ -457,18 +472,43 @@ function requestSettings(action) {
     request.settings = {mode: $("#phoneMode").value, mappings};
   }
   clearTimeout(settingsTimer);
-  settingsTimer = setTimeout(() => {
-    if (settingsRequest === id) {
+  let attempts = 0;
+  const send = () => {
+    if (settingsRequest !== id) return;
+    attempts++;
+    let sent;
+    try { sent = link?.settings(request); }
+    catch (_) { sent = false; }
+    if (sent === false || !link) {
       settingsRequest = null;
-      $("#settingsMessage").textContent = "No reply from PC. Update and restart the PC agent, then Reload. Check the PC dashboard for errors.";
+      $("#settingsMessage").textContent = "Request not sent: the connection is not ready. Wait for Connected, then tap Reload.";
+      $("#savePhoneSettings").disabled = !settingsLoaded;
+      return;
     }
-  }, 7000);
-  link.settings(request);
+    settingsTimer = setTimeout(() => {
+      if (settingsRequest !== id) return;
+      // Retry reads only; never silently apply a save multiple times.
+      if (action === 'get' && attempts < 3) { send(); return; }
+      settingsRequest = null;
+      $("#savePhoneSettings").disabled = true;
+      $("#settingsMessage").textContent = settingsFailure(action);
+    }, action === 'get' ? 2500 : 7500);
+  };
+  send();
 }
 function receiveSettings(s) {
-  if (s.id !== settingsRequest) return;
+  if (!settingsRequest || s.id !== settingsRequest) return;
   settingsRequest = null; clearTimeout(settingsTimer);
-  if (s.error) { $("#settingsMessage").textContent = s.error; return; }
+  if (s.error) {
+    $("#settingsMessage").textContent = "PC rejected settings: " + s.error;
+    $("#savePhoneSettings").disabled = !settingsLoaded;
+    return;
+  }
+  if (!Array.isArray(s.controls) || !Array.isArray(s.keys) || !s.mappings || !['keyboard','gamepad'].includes(s.mode)) {
+    $("#settingsMessage").textContent = "Invalid settings reply from PC. Update/restart the PC agent, then Reload.";
+    return;
+  }
+  settingsLoaded = true;
   $("#phoneMode").value = s.mode;
   const container = $("#phoneMappings"); container.textContent = "";
   for (const control of s.controls) {
@@ -480,14 +520,14 @@ function receiveSettings(s) {
     select.value = s.mappings[control] || ''; label.append(select); container.append(label);
   }
   $("#savePhoneSettings").disabled = false;
-  $("#settingsMessage").textContent = "PC replied · " + s.mode + " mode. Mappings are saved on the PC. Click inside the PC game before playing.";
+  $("#settingsMessage").textContent = s.outputError ? "PC replied, but input output is unavailable: " + s.outputError + ". Choose Keyboard (no ViGEmBus required) or fix the PC dependency, then Save." : "PC replied · " + s.mode + " mode. Mappings are saved on the PC. Click inside the PC game before playing.";
 }
 $("#openSettings").onclick = () => {
   st.b.clear(); st.lx = st.ly = st.rx = st.ry = 128;
   document.querySelectorAll('.btn.on').forEach(el => el.classList.remove('on'));
   flush(); $("#settingsPanel").hidden = false; requestSettings('get');
 };
-$("#closeSettings").onclick = () => { $("#settingsPanel").hidden = true; };
+$("#closeSettings").onclick = () => { settingsRequest = null; clearTimeout(settingsTimer); $("#settingsPanel").hidden = true; };
 $("#reloadPhoneSettings").onclick = () => requestSettings('get');
 $("#savePhoneSettings").onclick = () => requestSettings('save');
 

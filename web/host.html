@@ -5,6 +5,7 @@
 body{margin:0;background:#16181f;color:#e8eaf0;font:17px/1.5 system-ui;text-align:center;padding:40px 20px}main{max-width:650px;margin:auto}h1{margin-bottom:0}p{color:#aeb4c5}#code{font:bold clamp(32px,8vw,60px) ui-monospace,monospace;letter-spacing:.16em;user-select:all}img{background:white;padding:12px;border-radius:14px;width:220px;height:220px}a{color:#82adff;overflow-wrap:anywhere}#status{padding:14px;background:#22252e;border-radius:12px;white-space:pre-line}button{padding:10px 20px;border:0;border-radius:8px;background:#4c8dff;color:white;font:inherit}small{color:#aeb4c5}
 </style><main>
 <h1>PadLink · PC dashboard</h1><p>Keep this PC running. The controller belongs on your phone.</p>
+<p id="agentVersion"></p>
 <div id="status" role="status">Loading agent status…</div>
 <p>Joining code</p><div id="code">…</div>
 <p><img id="qr" alt="Scan on your phone to open the controller" hidden></p>
@@ -29,7 +30,8 @@ async function refresh() {
     if (!res.ok) throw new Error('status unavailable');
     const s = await res.json();
     document.getElementById('code').textContent = s.room;
-    document.getElementById('status').textContent = s.status;
+    document.getElementById('status').textContent = s.outputError ? 'Input output unavailable: ' + s.outputError + '. Choose a working output mode in settings below.' : s.status;
+    document.getElementById('agentVersion').textContent = 'Running PC agent: ' + (s.agentVersion || 'older build (version not reported)');
     document.getElementById('inputStatus').textContent = s.inputAge == null ? 'No phone input received yet.' : 'Last phone input: ' + s.inputAge + 's ago · Held keys: ' + (s.heldKeys.join(', ') || 'none');
     if (s.phoneUrl !== phoneUrl) {
       phoneUrl = s.phoneUrl;

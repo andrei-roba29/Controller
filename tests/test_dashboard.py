@@ -84,6 +84,20 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
             async with self.client.post(self.base + '/settings', json={'mode': 'bad'}) as res:
                 self.assertEqual(res.status, 400)
 
+    async def test_output_init_failure_still_joins_relay_and_serves_settings(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(agent, 'ROOT', Path(folder)), \
+                patch.object(agent.Output, 'prepare', side_effect=RuntimeError('missing driver')), \
+                patch.object(agent, 'Relay', FakeRelay):
+            state = await self.start()
+            self.assertEqual(state['status'], 'PC ready')
+            self.assertEqual(state['agentVersion'], agent.VERSION)
+            self.assertEqual(state['outputError'], 'missing driver')
+            async with self.client.get(self.base + '/settings') as res:
+                self.assertEqual(res.status, 200)
+                settings = await res.json()
+                self.assertEqual(settings['outputError'], 'missing driver')
+                self.assertEqual(settings['mode'], 'keyboard')
+
     async def test_missing_driver_keeps_code_visible(self):
         with patch.object(agent, 'Output', side_effect=RuntimeError('driver missing')):
             state = await self.start()

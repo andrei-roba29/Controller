@@ -103,7 +103,7 @@
       return;
     }
     if (event === "broadcast") {
-      if (payload.event === "pc-alive") this.onAlive();
+      if (payload.event === "pc-alive") this.onAlive(payload.payload || {});
       if (payload.event === "settings-response") this.onSettings(payload.payload || {});
       return;
     }

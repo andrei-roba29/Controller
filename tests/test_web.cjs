@@ -22,6 +22,8 @@ async function run(desktop) {
     fetch:async () => { fetches++; return {ok:false}; },
     WebSocket:function(){sockets++;}, console
   };
+  const timers = [];
+  context.setTimeout = fn => { timers.push(fn); return timers.length; };
   vm.runInNewContext(script, context);
   await new Promise(resolve => setImmediate(resolve));
   // Settings must send over the connected channel, not fetch a phone-local URL.
@@ -35,6 +37,25 @@ async function run(desktop) {
   assert.match(node('#settingsMessage').textContent, /PC replied/);
   node('#savePhoneSettings').onclick();
   assert.equal(context.lastRequest.action, 'save');
+  // Transport not ready should report an immediate failure, not a timeout.
+  vm.runInNewContext("link.settings = () => false", context);
+  node('#reloadPhoneSettings').onclick();
+  assert.match(node('#settingsMessage').textContent, /Request not sent/);
+  vm.runInNewContext("mode = 'relay'; pcSeenAt = 0; pcInfo = null", context);
+  assert.match(vm.runInNewContext("settingsFailure('get')", context), /No PC heartbeat/);
+  vm.runInNewContext("pcSeenAt = Date.now(); pcInfo = {}", context);
+  assert.match(vm.runInNewContext("settingsFailure('get')", context), /older running copy/);
+  vm.runInNewContext("pcInfo = {capabilities:['settings-v1']}", context);
+  assert.match(vm.runInNewContext("settingsFailure('save')", context), /may have reached/);
+  vm.runInNewContext("globalThis.readCount = 0; link.settings = () => { readCount++; return true; }", context);
+  node('#reloadPhoneSettings').onclick();
+  timers.at(-1)(); timers.at(-1)(); timers.at(-1)();
+  assert.equal(context.readCount, 3);
+  assert.match(node('#settingsMessage').textContent, /after retries/);
+  vm.runInNewContext("readCount = 0", context);
+  node('#savePhoneSettings').onclick();
+  timers.at(-1)();
+  assert.equal(context.readCount, 1, 'save must not retry automatically');
   node('#closeSettings').onclick();
   assert.equal(node('#settingsPanel').hidden, true);
   assert.match(html, /data-b="options">Options/);

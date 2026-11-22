@@ -25,7 +25,7 @@ def validate(value):
 
 
 class Output:
-    def __init__(self, path, dry_run=False):
+    def __init__(self, path, dry_run=False, tolerate_error=False):
         self.path = Path(path)
         self.dry_run = dry_run
         self.settings = validate({'mode': 'keyboard', 'mappings': DEFAULT})
@@ -37,7 +37,13 @@ class Output:
         self.keyboard = None
         self.gamepad = None
         self.last_input = None
-        self.prepare(self.settings['mode'])
+        self.error = None
+        try:
+            self.prepare(self.settings['mode'])
+        except Exception as exc:
+            if not tolerate_error:
+                raise
+            self.error = str(exc)
 
     def prepare(self, mode):
         if self.dry_run:
@@ -59,6 +65,7 @@ class Output:
         temp.replace(self.path)
         self.reset()
         self.settings = value
+        self.error = None
 
     def key(self, name):
         # Character injection uses KEYEVENTF_UNICODE on Windows. Games generally
@@ -71,6 +78,8 @@ class Output:
         import time
         if msg is not None:
             self.last_input = time.monotonic()
+        if self.error:
+            return
         if self.settings['mode'] == 'gamepad':
             if self.gamepad:
                 self.gamepad.apply(msg)
@@ -112,6 +121,7 @@ def settings_reply(output, request):
             output.configure(request.get('settings'))
         elif request.get('action') != 'get':
             raise ValueError('Unknown settings action')
-        return {'id': request_id, **output.settings, 'controls': CONTROLS, 'keys': KEYS}
+        return {'id': request_id, **output.settings, 'controls': CONTROLS, 'keys': KEYS,
+                'outputError': output.error}
     except Exception as exc:
         return {'id': request_id, 'error': str(exc)}
