@@ -14,7 +14,7 @@ async function run(desktop) {
   const context = {
     document: {querySelector:node, querySelectorAll:()=>[], body:node('body'),
       documentElement:{}, addEventListener(){}},
-    window:{innerWidth:desktop ? 1200 : 390, matchMedia:()=>({matches:desktop})},
+    window:{addEventListener(){}, innerWidth:desktop ? 1200 : 390, matchMedia:()=>({matches:desktop})},
     location:{hash:'#K7M2QX9P', origin:'https://example.com', pathname:'/',search:''},
     navigator:{}, screen:{}, performance, history:{replaceState(){}},
     localStorage:{getItem(){},setItem(){}}, sessionStorage:{getItem(){},setItem(){}},
