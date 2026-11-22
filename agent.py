@@ -34,11 +34,11 @@ from pathlib import Path
 from urllib.parse import quote
 
 from pad import Pad, new_pin, new_room_code
-from keyboard_output import Output, CONTROLS, KEYS
+from keyboard_output import Output, CONTROLS, KEYS, settings_reply
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 DEFAULT_REALTIME = "https://ljvafmdhcpxbtstaljqb.supabase.co"
 HEARTBEAT_EVERY = 24.0
 PC_ALIVE_EVERY = 2.0
@@ -192,7 +192,12 @@ class Relay:
             event = msg.get("event")
             if event == "broadcast":
                 body = msg.get("payload") or {}
-                if body.get("event") == "input":
+                if body.get("event") == "settings-request":
+                    payload = body.get("payload")
+                    if isinstance(payload, dict):
+                        await ws.send(self._frame("settings-response",
+                                      settings_reply(self.session.pad, payload)))
+                elif body.get("event") == "input":
                     last_input = time.monotonic()
                     self.session.input(body.get("payload") or {})
             elif event == "phx_reply":
@@ -280,8 +285,13 @@ def run_lan(args, session: Session, pin: str) -> None:
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
-                    active["last_input"] = time.monotonic()
-                    session.input(json.loads(msg.data))
+                    payload = json.loads(msg.data)
+                    if payload.get("type") == "settings-request":
+                        await ws.send_json({"type": "settings-response",
+                                            **settings_reply(session.pad, payload)})
+                    else:
+                        active["last_input"] = time.monotonic()
+                        session.input(payload)
         finally:
             if active["ws"] is ws:
                 session.input(None)

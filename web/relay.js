@@ -22,6 +22,7 @@
     this.room = opts.room;
     this.topic = "realtime:padlink:" + opts.room;
     this.onStatus = opts.onStatus || function () {};
+    this.onSettings = opts.onSettings || function () {};
     this.onAlive = opts.onAlive || function () {};
     this.onError = opts.onError || function () {};
 
@@ -103,6 +104,7 @@
     }
     if (event === "broadcast") {
       if (payload.event === "pc-alive") this.onAlive();
+      if (payload.event === "settings-response") this.onSettings(payload.payload || {});
       return;
     }
     if (event === "phx_error" || event === "phx_close") {
@@ -130,6 +132,13 @@
       join_ref: this.joinRef,
       payload: {type: "broadcast", event: "input", payload: state}
     });
+  };
+
+  PadLinkRelay.prototype.settings = function (request) {
+    if (!this.joined) return false;
+    return this.send({topic: this.topic, event: "broadcast", ref: String(++this.ref),
+      join_ref: this.joinRef,
+      payload: {type: "broadcast", event: "settings-request", payload: request}});
   };
 
   PadLinkRelay.prototype.startHeartbeat = function () {
