@@ -31,12 +31,15 @@ async function run(desktop) {
   node('#openSettings').onclick();
   assert.equal(node('#settingsPanel').hidden, false);
   assert.equal(context.lastRequest.action, 'get');
-  context.reply = {id:context.lastRequest.id, mode:'keyboard', controls:[], keys:[], mappings:{}};
+  context.reply = {id:context.lastRequest.id, mode:'keyboard', controls:[], keys:['mouse_left'], mappings:{}, rightStickMode:'mouse', mouseSpeed:1200, invertMouseY:true};
   vm.runInNewContext('receiveSettings(reply)', context);
   assert.equal(node('#savePhoneSettings').disabled, false);
   assert.match(node('#settingsMessage').textContent, /PC replied/);
   node('#savePhoneSettings').onclick();
   assert.equal(context.lastRequest.action, 'save');
+  assert.equal(context.lastRequest.settings.rightStickMode, 'mouse');
+  assert.equal(context.lastRequest.settings.mouseSpeed, 1200);
+  assert.equal(context.lastRequest.settings.invertMouseY, true);
   // Transport not ready should report an immediate failure, not a timeout.
   vm.runInNewContext("link.settings = () => false", context);
   node('#reloadPhoneSettings').onclick();

@@ -38,7 +38,7 @@ from keyboard_output import Output, CONTROLS, KEYS, settings_reply
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 DEFAULT_REALTIME = "https://ljvafmdhcpxbtstaljqb.supabase.co"
 HEARTBEAT_EVERY = 24.0
 PC_ALIVE_EVERY = 2.0
@@ -265,8 +265,16 @@ def run_lan(args, session: Session, pin: str) -> None:
 
     async def release_stale(app):
         async def watch():
+            previous = time.monotonic()
             while True:
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(1 / 60)
+                now = time.monotonic()
+                try:
+                    session.pad.tick(now - previous)
+                except Exception as exc:
+                    session.pad.error = f"Mouse movement failed: {exc}"
+                    session.pad.reset()
+                previous = now
                 if active["last_input"] and time.monotonic() - active["last_input"] > INPUT_TIMEOUT:
                     active["last_input"] = 0.0
                     session.input(None)
@@ -412,6 +420,7 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
     if not args.no_browser:
         webbrowser.open(dashboard_url)
     pad = None
+    mouse_task = None
     try:
         try:
             pad = Output(ROOT / "settings.json", dry_run=args.dry_run, tolerate_error=True)
@@ -429,11 +438,27 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
             state["status"] = "Relay unavailable: missing anon key in web/config.json."
             await asyncio.Event().wait()
             return
+        async def move_mouse():
+            previous = time.monotonic()
+            while True:
+                await asyncio.sleep(1 / 60)
+                now = time.monotonic()
+                try:
+                    pad.tick(now - previous)
+                except Exception as exc:
+                    pad.error = f"Mouse movement failed: {exc}"
+                    pad.reset()
+                previous = now
+
+        mouse_task = asyncio.create_task(move_mouse())
         state["status"] = "Input output ready. Connecting to relay…"
         relay = Relay(base, api_key, room, Session(pad), verbose=args.verbose,
                       on_status=lambda message: state.update(status=message))
         await relay.run()
     finally:
+        if mouse_task:
+            mouse_task.cancel()
+            await asyncio.gather(mouse_task, return_exceptions=True)
         if pad:
             pad.reset()
         await runner.cleanup()

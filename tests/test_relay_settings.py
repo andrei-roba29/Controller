@@ -49,8 +49,13 @@ class RelaySettingsTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(read['id'], 'read1')
                         self.assertEqual(read['mappings']['cross'], 'space')
                         saved = await exchange({'id':'write1', 'action':'save', 'settings':{
-                            'mode':'keyboard', 'mappings':{'cross':'x'}}})
+                            'mode':'keyboard', 'mappings':{'cross':'x','touchpad':'mouse_left'},
+                            'rightStickMode':'mouse', 'mouseSpeed':1200, 'invertMouseY':True}})
                         self.assertEqual(saved['mappings']['cross'], 'x')
+                        self.assertEqual(saved['mappings']['touchpad'], 'mouse_left')
+                        self.assertEqual(saved['rightStickMode'], 'mouse')
+                        self.assertEqual(saved['mouseSpeed'], 1200)
+                        self.assertTrue(saved['invertMouseY'])
                         self.assertEqual(Output(output.path, dry_run=True).settings['mappings']['cross'], 'x')
                         while True:
                             frame = await asyncio.wait_for(replies.get(), 2)

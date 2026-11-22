@@ -83,3 +83,70 @@ class KeyboardTests(unittest.TestCase):
         self.assertIsNone(output.error)
         output.apply({'b':['cross']})
         self.assertEqual(output.held, {'x'})
+
+    def test_mouse_click_hold_release_and_shared_mapping(self):
+        self.output.mouse = Mock()
+        self.output.mouse_buttons = Mock(left='LEFT', right='RIGHT', middle='MIDDLE')
+        self.output.configure({'mode':'keyboard', 'mappings':{'touchpad':'mouse_left', 'r1':'mouse_left'}})
+        self.output.apply({'b':['touchpad', 'r1']})
+        self.output.apply({'b':['r1']})
+        self.output.mouse.press.assert_called_once_with('LEFT')
+        self.output.mouse.release.assert_not_called()
+        self.output.reset()
+        self.output.mouse.release.assert_called_once_with('LEFT')
+        self.output.keyboard.press.assert_not_called()
+
+    def test_mouse_look_continues_without_new_input_and_stops_on_reset(self):
+        self.output.mouse = Mock()
+        self.output.configure({'mode':'keyboard', 'mappings':{'right_right':'e'},
+                               'rightStickMode':'mouse', 'mouseSpeed':1000})
+        self.output.apply({'rx':255, 'ry':128})
+        self.output.tick(.02)
+        self.output.tick(.02)
+        self.assertEqual(self.output.mouse.move.call_count, 2)
+        self.output.mouse.move.assert_called_with(20, 0)
+        self.output.keyboard.press.assert_not_called()
+        self.output.reset()
+        self.output.tick(.02)
+        self.assertEqual(self.output.mouse.move.call_count, 2)
+
+    def test_mouse_look_deadzone_invert_and_stale_timeout(self):
+        self.output.mouse = Mock()
+        self.output.configure({'mode':'keyboard', 'mappings':{}, 'rightStickMode':'mouse',
+                               'mouseSpeed':1000, 'invertMouseY':True})
+        self.output.apply({'rx':130,'ry':127})
+        self.output.tick(.02)
+        self.output.mouse.move.assert_not_called()
+        self.output.apply({'rx':128,'ry':255})
+        self.output.tick(.02)
+        self.output.mouse.move.assert_called_once_with(0, -20)
+        self.output.last_input -= 2
+        self.output.tick(.02)
+        self.assertEqual(self.output.mouse.move.call_count, 1)
+
+    def test_mouse_options_validation_and_old_settings_migration(self):
+        old = validate({'mode':'keyboard','mappings':{'cross':'space'}})
+        self.assertEqual(old['rightStickMode'], 'keys')
+        for field, value in [('mouseSpeed',float('nan')),('mouseSpeed',0),('mouseSpeed',True),
+                             ('invertMouseY','yes'),('rightStickMode','unknown')]:
+            with self.assertRaises(ValueError):
+                validate({'mode':'keyboard','mappings':{},field:value})
+
+    def test_gamepad_mode_never_moves_mouse(self):
+        self.output.mouse = Mock()
+        self.output.gamepad = Mock()
+        self.output.configure({'mode':'gamepad','mappings':{},'rightStickMode':'mouse'})
+        self.output.apply({'rx':255})
+        self.output.tick(.02)
+        self.output.mouse.move.assert_not_called()
+        self.output.gamepad.apply.assert_called_once_with({'rx':255})
+
+    def test_windows_mouse_look_uses_relative_events(self):
+        self.output.mouse = Mock()
+        self.output.configure({'mode':'keyboard','mappings':{},'rightStickMode':'mouse','mouseSpeed':1000})
+        self.output.apply({'rx':255})
+        self.output.dry_run = False
+        with patch('keyboard_output.sys.platform', 'win32'), patch('mouse_output.move_relative') as move:
+            self.output.tick(.02)
+            move.assert_called_once_with(20, 0)
+            self.output.mouse.move.assert_not_called()
