@@ -38,7 +38,7 @@ from keyboard_output import Output, CONTROLS, KEYS, settings_reply
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 DEFAULT_REALTIME = "https://ljvafmdhcpxbtstaljqb.supabase.co"
 HEARTBEAT_EVERY = 24.0
 PC_ALIVE_EVERY = 2.0
@@ -127,11 +127,14 @@ class Relay:
             print(f"  joined room {self.room}", flush=True)
             tasks = [asyncio.create_task(self._reader(ws)),
                      asyncio.create_task(self._keepalive(ws))]
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
-            for task in done:
-                task.result()
+            try:
+                done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    task.result()
+            finally:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _join(self, ws) -> None:
         ref = self._next_ref()
@@ -213,7 +216,11 @@ class Relay:
         last_heartbeat = time.monotonic()
         while True:
             await asyncio.sleep(PC_ALIVE_EVERY)
-            await ws.send(self._frame("pc-alive", {}))
+            await ws.send(self._frame("pc-alive", {
+                "agentVersion": VERSION, "capabilities": ["settings-v1"],
+                "mode": self.session.pad.settings["mode"],
+                "outputError": self.session.pad.error,
+            }))
             if time.monotonic() - last_heartbeat >= HEARTBEAT_EVERY:
                 last_heartbeat = time.monotonic()
                 await ws.send(json.dumps({"topic": "phoenix", "event": "heartbeat",
@@ -337,7 +344,7 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
     from aiohttp import web
 
     phone_url = f"{site.rstrip('/')}/#{room}" if site else ""
-    state = {"room": room, "phoneUrl": phone_url, "status": "Starting input output…"}
+    state = {"room": room, "phoneUrl": phone_url, "status": "Starting input output…", "agentVersion": VERSION}
     dashboard_url = f"http://127.0.0.1:{args.port}/host"
 
     @web.middleware
@@ -360,7 +367,8 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
         return web.json_response({**state,
             "inputAge": round(time.monotonic() - output.last_input, 1)
                         if output and output.last_input else None,
-            "heldKeys": sorted(output.held) if output else []})
+            "heldKeys": sorted(output.held) if output else [],
+            "outputError": output.error if output else None})
 
     async def settings(request):
         if output is None:
@@ -375,7 +383,7 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
                 output.configure(await request.json())
             except (ValueError, OSError, RuntimeError, ImportError) as exc:
                 return web.json_response({"error": str(exc)}, status=400)
-        return web.json_response({**output.settings, "controls": CONTROLS, "keys": KEYS})
+        return web.json_response({**output.settings, "controls": CONTROLS, "keys": KEYS, "outputError": output.error})
 
     async def qr(request):
         import qrcode
@@ -406,8 +414,10 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
     pad = None
     try:
         try:
-            pad = Output(ROOT / "settings.json", dry_run=args.dry_run)
+            pad = Output(ROOT / "settings.json", dry_run=args.dry_run, tolerate_error=True)
             output = pad
+            if pad.error:
+                print(f"Input output unavailable: {pad.error}. Settings remain available.", flush=True)
         except Exception as exc:
             state["status"] = (f"Input output FAILED: {exc}\n"
                                "Keyboard mode needs pynput; gamepad mode needs ViGEmBus. "
@@ -598,7 +608,7 @@ def main() -> None:
     if args.lan:
         session_pad = None
         try:
-            session_pad = Output(ROOT / "settings.json", dry_run=args.dry_run)
+            session_pad = Output(ROOT / "settings.json", dry_run=args.dry_run, tolerate_error=True)
         except Exception as exc:  # noqa: BLE001
             print("Could not create the virtual controller:", exc, flush=True)
             print("Install the ViGEmBus driver: "

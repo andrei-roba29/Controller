@@ -332,3 +332,29 @@ node tests/test_touch_layout.cjs
 
 These check hit testing and non-overlap at nine landscape viewport sizes,
 including actual touch taps on Triangle and Settings.
+
+### Phone Settings says “No reply from PC”
+
+This means a settings request was not answered, not that a mapping was saved.
+The phone joins the relay independently of the PC, so the controller screen
+alone is not proof that the PC agent is present.
+
+On the **PC**, open `http://127.0.0.1:8765/host` and check its status and room
+code. You can configure mappings directly under **Input settings** there while
+troubleshooting. In agent 1.7.0 the dashboard and phone report the running agent
+version; older agents may not report a version or settings capabilities.
+
+If the website updated but the running PC agent did not, stop the existing
+PadLink console with Ctrl+C, update the local folder, and double-click
+`start-padlink.cmd` from that folder. An agent already running (including the
+sign-in copy) keeps executing the old code until stopped; a second launcher
+cannot replace it when its port is occupied. Check the Windows startup shortcut
+if it points to an older folder. Do not open the loopback dashboard address on
+the phone—it refers to the phone itself there.
+
+From 1.7.0, an output initialization failure no longer prevents the PC joining
+the relay: phone Settings remains available and shows the output error. Switch
+to Keyboard if the gamepad driver is unavailable, or install the missing input
+dependency using the updated launcher. Settings loads retry twice; saves never
+automatically retry. If a save is unconfirmed, Reload to see whether it applied
+before saving again.

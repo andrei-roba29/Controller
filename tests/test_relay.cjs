@@ -1,0 +1,23 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const context = {setInterval(){},clearInterval(){},setTimeout(){},clearTimeout(){}};
+vm.runInNewContext(fs.readFileSync('web/relay.js', 'utf8'), context);
+let alive, settings;
+const relay = new context.PadLinkRelay({url:'https://example.com',key:'key',room:'K7M2QX9P',
+  onAlive:s => alive=s, onSettings:s => settings=s});
+assert.equal(relay.settings({id:'1',action:'get'}),false);
+let sent;
+relay.joined = true; relay.joinRef = '1';
+relay.ws = {readyState:1,send:raw => sent=JSON.parse(raw)};
+assert.equal(relay.settings({id:'2',action:'get'}),true);
+assert.equal(sent.payload.event,'settings-request');
+assert.equal(sent.payload.payload.id,'2');
+relay.frame(JSON.stringify({event:'broadcast',payload:{event:'settings-response',payload:{id:'2',mode:'keyboard'}}}));
+assert.equal(settings.id,'2');
+relay.frame(JSON.stringify({event:'broadcast',payload:{event:'pc-alive',payload:{agentVersion:'1.7.0',capabilities:['settings-v1']}}}));
+assert.equal(alive.agentVersion,'1.7.0');
+assert.equal(alive.capabilities[0],'settings-v1');
+relay.frame(JSON.stringify({event:'broadcast',payload:{event:'pc-alive',payload:{}}}));
+assert.equal(alive.agentVersion,undefined,'legacy keepalive remains supported');
+console.log('Relay settings frames and heartbeat metadata passed');
