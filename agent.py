@@ -22,6 +22,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import io
+import webbrowser
 import re
 import secrets
 import socket
@@ -35,7 +37,7 @@ from pad import Pad, new_pin, new_room_code
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
-VERSION = "1.2.0"
+VERSION = "1.4.0"
 DEFAULT_REALTIME = "https://ljvafmdhcpxbtstaljqb.supabase.co"
 HEARTBEAT_EVERY = 24.0
 PC_ALIVE_EVERY = 2.0
@@ -80,7 +82,7 @@ class Session:
 # --------------------------------------------------------------------------- #
 class Relay:
     def __init__(self, base_url: str, api_key: str, room: str, session: Session,
-                 verbose: bool = False):
+                 verbose: bool = False, on_status=None):
         self.ws_base = (base_url.rstrip("/")
                         .replace("https://", "wss://", 1)
                         .replace("http://", "ws://", 1))
@@ -88,6 +90,7 @@ class Relay:
         self.room = room
         self.topic = f"realtime:padlink:{room}"
         self.session = session
+        self.on_status = on_status or (lambda message: None)
         self.verbose = verbose
         self._ref = 0
         self._join_ref = None
@@ -105,6 +108,7 @@ class Relay:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - keep the agent alive
+                self.on_status(f"Relay disconnected: {type(exc).__name__}: {exc}. Retrying…")
                 self.session.pad.reset()
                 print(f"  disconnected ({type(exc).__name__}: {exc}); reconnecting in {backoff}s",
                       flush=True)
@@ -118,6 +122,7 @@ class Relay:
         async with websockets.connect(url, max_size=4 << 20, ping_interval=20,
                                       ping_timeout=20) as ws:
             await self._join(ws)
+            self.on_status("PC ready — scan the QR code with your phone, then tap Connect.")
             print(f"  joined room {self.room}", flush=True)
             tasks = [asyncio.create_task(self._reader(ws)),
                      asyncio.create_task(self._keepalive(ws))]
@@ -279,6 +284,12 @@ def run_lan(args, session: Session, pin: str) -> None:
     ])
     app.router.add_static("/", WEB)
 
+    async def open_lan_dashboard(app):
+        if not args.no_browser:
+            asyncio.get_running_loop().call_later(
+                0.5, webbrowser.open, f"{scheme}://localhost:{args.port}/host")
+
+    app.on_startup.append(open_lan_dashboard)
     ctx = None
     if args.cert and args.key:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -287,6 +298,80 @@ def run_lan(args, session: Session, pin: str) -> None:
         web.run_app(app, host="0.0.0.0", port=args.port, ssl_context=ctx, print=None)
     except OSError as exc:
         print("Could not start the server:", exc, flush=True)
+
+
+async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: str) -> None:
+    """Loopback-only pairing dashboard; never exposes the room via a public API."""
+    from aiohttp import web
+
+    phone_url = f"{site.rstrip('/')}/#{room}" if site else ""
+    state = {"room": room, "phoneUrl": phone_url, "status": "Starting virtual controller…"}
+    dashboard_url = f"http://127.0.0.1:{args.port}/host"
+
+    @web.middleware
+    async def local_only(request, handler):
+        # Also reject DNS rebinding: only literal loopback Host headers are valid.
+        if request.remote not in ("127.0.0.1", "::1") or request.host not in (
+                f"127.0.0.1:{args.port}", f"localhost:{args.port}"):
+            raise web.HTTPForbidden()
+        response = await handler(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    async def host(request):
+        return web.FileResponse(WEB / "host.html")
+
+    async def status(request):
+        return web.json_response(state)
+
+    async def qr(request):
+        import qrcode
+        import qrcode.image.svg
+        image = qrcode.make(phone_url, image_factory=qrcode.image.svg.SvgPathImage)
+        output = io.BytesIO()
+        image.save(output)
+        return web.Response(body=output.getvalue(), content_type="image/svg+xml")
+
+    app = web.Application(middlewares=[local_only])
+    app.add_routes([web.get("/", host), web.get("/host", host),
+                    web.get("/status", status), web.get("/qr.svg", qr)])
+    runner = web.AppRunner(app)
+    await runner.setup()
+    try:
+        await web.TCPSite(runner, "127.0.0.1", args.port).start()
+    except OSError:
+        await runner.cleanup()
+        print(f"Dashboard port {args.port} is busy. PadLink may already be running. "
+              "Stop the old agent or choose --port NUMBER.", flush=True)
+        if not args.no_browser:
+            webbrowser.open(dashboard_url)
+        return
+    print(f"  PC dashboard: {dashboard_url}", flush=True)
+    if not args.no_browser:
+        webbrowser.open(dashboard_url)
+    pad = None
+    try:
+        try:
+            pad = Pad(dry_run=args.dry_run)
+        except Exception as exc:
+            state["status"] = (f"Virtual controller FAILED: {exc}\n"
+                               "Install ViGEmBus, reboot, then restart PadLink. "
+                               "For diagnostics, run .\\start-padlink.cmd --check in PowerShell.")
+            print(state["status"], flush=True)
+            await asyncio.Event().wait()
+            return
+        if not api_key:
+            state["status"] = "Relay unavailable: missing anon key in web/config.json."
+            await asyncio.Event().wait()
+            return
+        state["status"] = "Virtual controller ready. Connecting to relay…"
+        relay = Relay(base, api_key, room, Session(pad), verbose=args.verbose,
+                      on_status=lambda message: state.update(status=message))
+        await relay.run()
+    finally:
+        if pad:
+            pad.reset()
+        await runner.cleanup()
 
 
 # --------------------------------------------------------------------------- #
@@ -431,9 +516,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="PadLink PC agent")
     parser.add_argument("--lan", action="store_true",
                         help="serve the PWA over your Wi-Fi instead of using Supabase")
-    parser.add_argument("--room", help="fixed 8-character room code (default: random each run)")
+    parser.add_argument("--room", help="fixed 8-character room code (default: remembered in room.txt)")
     parser.add_argument("--pin", help="fixed LAN pairing PIN (default: random each run)")
-    parser.add_argument("--port", type=int, default=8765, help="LAN mode port (default 8765)")
+    parser.add_argument("--port", type=int, default=8765, help="PC dashboard / LAN server port (default 8765)")
     parser.add_argument("--cert", help="LAN mode: TLS certificate for HTTPS")
     parser.add_argument("--key", help="LAN mode: TLS private key for HTTPS")
     parser.add_argument("--site", help="public URL of the PWA, printed with the room code")
@@ -445,6 +530,8 @@ def main() -> None:
                         help="check Python, dependencies, driver and relay, then exit")
     parser.add_argument("--dry-run", action="store_true",
                         help="don't touch vgamepad, just print the input state")
+    parser.add_argument("--no-browser", action="store_true",
+                        help="run without opening the PC dashboard (for sign-in startup)")
     parser.add_argument("--verbose", action="store_true", help="log every websocket frame")
     args = parser.parse_args()
 
@@ -477,35 +564,11 @@ def main() -> None:
     # The code goes on screen before anything else can fail.
     print_code_block(room, site)
 
-    try:
-        pad = Pad(dry_run=args.dry_run)
-        print(f"  Virtual controller: {'dry run (no driver needed)' if args.dry_run else 'ready'}",
-              flush=True)
-    except Exception as exc:  # noqa: BLE001
-        print(f"  Virtual controller: FAILED - {type(exc).__name__}: {exc}", flush=True)
-        print("\nThe ViGEmBus driver is missing, so Windows has no virtual controller.\n"
-              "  1. Download it:  https://github.com/nefarius/ViGEmBus/releases\n"
-              "  2. Run ViGEmBus_*_x64.msi, then reboot Windows\n"
-              "  3. Confirm with: .\\start-padlink.cmd --check\n"
-              "\nTo test the phone side without the driver: "
-              ".\\start-padlink.cmd --dry-run", flush=True)
-        raise SystemExit(1)
-
-    session = Session(pad)
     api_key = args.api_key or cfg.get("supabaseAnonKey") or ""
-    if not api_key:
-        print("  Relay:              FAILED - no anon key in web/config.json", flush=True)
-        raise SystemExit(1)
-
-    print("  Relay:              connecting...", flush=True)
-    relay = Relay(args.realtime_url or cfg.get("supabaseUrl") or DEFAULT_REALTIME,
-                  api_key, room, session, verbose=args.verbose)
+    base = args.realtime_url or cfg.get("supabaseUrl") or DEFAULT_REALTIME
     try:
-        asyncio.run(relay.run())
+        asyncio.run(run_relay_dashboard(args, room, site, api_key, base))
     except KeyboardInterrupt:
-        pass
-    finally:
-        pad.reset()
         print("Stopped.", flush=True)
 
 

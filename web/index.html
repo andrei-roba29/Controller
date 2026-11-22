@@ -81,12 +81,13 @@ border-radius:10px;padding:9px 14px;font:600 13px system-ui}
 link on your <b>phone</b>, then point the phone at the PC.</div>
 
 <div id="wrongdev">
-  <h2>This page is the controller</h2>
-  <p>It belongs on your <b>phone</b>. Your PC only needs the console window from
-  <code>start-padlink.cmd</code> — it should never show a gamepad.</p>
-  <p>Open this address in your phone's browser:</p>
-  <p class="url" id="phoneurl">…</p>
-  <p>Or scan the QR code the console prints.</p>
+  <h2>PadLink · PC pairing</h2>
+  <p>The gamepad opens on your <b>phone</b>. Your joining code and scannable QR code are on the PC agent dashboard:</p>
+  <p><a class="url" href="http://127.0.0.1:8765/host" style="display:block;color:#82adff">Open PC dashboard &amp; joining code</a></p>
+  <p>If it does not open, double-click <code>start-padlink.cmd</code> in your PadLink folder. No PowerShell command is needed.</p>
+  <p>For automatic launch at Windows sign-in, double-click <code>enable-startup.cmd</code> once. A website cannot start a Windows program without setup.</p>
+  <p>Phone website:</p><p class="url" id="phoneurl">…</p>
+  <p id="desktopcode"></p>
   <button type="button" id="anyway">Use this computer anyway</button>
 </div>
 
@@ -186,7 +187,7 @@ function flush() {
 }
 
 function goFull() {
-  document.documentElement.requestFullscreen().catch(() => {});
+  try { document.documentElement.requestFullscreen?.().catch(() => {}); } catch (e) {}
   try { screen.orientation.lock("landscape").catch(() => {}) } catch (e) {}
   navigator.wakeLock?.request("screen").then(w => wake = w).catch(() => {});
 }
@@ -376,6 +377,7 @@ async function boot() {
   // the phone is the controller. Refuse by default instead of warning quietly.
   if (isDesktop() && !sget("pc-ok")) {
     $("#phoneurl").textContent = location.origin + location.pathname + (hash ? "#" + hash : "");
+    $("#desktopcode").textContent = /^[0-9A-HJKMNP-TV-Z]{8}$/.test(hash) ? "Joining code in this link: " + hash : "Open the PC dashboard above to see your saved joining code.";
     $("#wrongdev").classList.add("show");
     return;
   }
@@ -392,7 +394,7 @@ async function boot() {
     history.replaceState(null, "", location.pathname + location.search);
     if (hash.length === (mode === "lan" ? 6 : 8)) {
       $("#code").value = hash;
-      submit();
+      setPairStatus("Code filled in — tap Connect on this phone to play.");
     }
   }
 }
