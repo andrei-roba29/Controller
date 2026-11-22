@@ -358,3 +358,36 @@ to Keyboard if the gamepad driver is unavailable, or install the missing input
 dependency using the updated launcher. Settings loads retry twice; saves never
 automatically retry. If a save is unconfirmed, Reload to see whether it applied
 before saving again.
+
+## Mouse clicks and right-stick camera look (1.8.0)
+
+Update **both the PC agent and website**, restart the old PC agent, and reload
+the phone. On either settings screen:
+
+1. Select **Keyboard + mouse**.
+2. Map **Touchpad (click)** (or any other button, including R3) to **Mouse left
+   click**, **Mouse right click**, or **Mouse middle click**. Holding that button
+   holds the mouse button; releasing it or disconnecting releases the click.
+3. For **Right stick**, select **Mouse look / camera pan**. Adjust speed
+   (100–3000 pixels/second at full tilt) and optionally invert vertical look.
+4. Save, then click inside the game on the **PC**. Some games need to capture
+   the pointer (pointer lock) before moving the mouse controls the camera.
+
+Right-stick mouse look sends continuous relative movement at roughly 60 Hz,
+with a centre deadzone and speed proportional to tilt, even while the phone
+sends an unchanged stick position. In this mode the four right-stick keyboard
+mappings are ignored; R3 remains a separately mapped click/button. Choose
+**Mapped direction keys** to return to the old behaviour. Existing settings
+keep that behaviour until you explicitly enable mouse look.
+
+The touchpad control here is a **click**, not a swipe surface or a physical
+laptop touchpad gesture. This feature sends mouse-button events and relative
+mouse movement; it does not emulate multi-finger trackpad gestures. Games that
+require dragging can use a mapped held mouse button together with the stick.
+Virtual-gamepad mode is unchanged and does not inject mouse movement/clicks.
+
+Mouse input affects the active desktop, not a particular game window. Keep the
+game focused; some elevated apps, raw-input games, or anti-cheat systems may
+reject simulated input. Windows uses relative SendInput mouse events rather
+than absolute cursor positioning; actual game compatibility still needs testing
+on Windows.

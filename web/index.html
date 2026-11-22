@@ -124,7 +124,13 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
 <div id="settingsPanel" hidden style="position:fixed;inset:0;z-index:50;background:#16181f;padding:20px;overflow:auto;touch-action:pan-y">
 <h2>Controller settings</h2><p>Options is a game button (Enter by default), not this settings menu.</p>
 <p>Choose Keyboard for browser games. Save, then click inside the game on your PC.</p>
-<label>Output <select id="phoneMode"><option value="keyboard">Keyboard</option><option value="gamepad">Virtual gamepad</option></select></label>
+<label>Output <select id="phoneMode"><option value="keyboard">Keyboard + mouse</option><option value="gamepad">Virtual gamepad</option></select></label>
+<fieldset><legend>Mouse look (Keyboard + mouse mode)</legend>
+<label>Right stick <select id="phoneRightStickMode"><option value="keys">Mapped direction keys</option><option value="mouse">Mouse look / camera pan</option></select></label>
+<p><label>Speed (pixels/second) <input id="phoneMouseSpeed" type="number" min="100" max="3000" step="50" value="900"></label></p>
+<label><input id="phoneInvertMouseY" type="checkbox"> Invert vertical look</label>
+<p>Mouse look replaces right-stick direction keys. R3 stays mapped separately. Click inside the PC game first and enable its pointer lock if needed.</p></fieldset>
+<p>Map <b>Touchpad (click)</b> or any button to Mouse left/right/middle click below.</p>
 <div id="phoneMappings" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0"></div>
 <button id="savePhoneSettings" disabled>Save</button> <button id="reloadPhoneSettings">Reload</button> <button id="closeSettings">Back to controller</button>
 <p id="pcDetails"></p>
@@ -469,7 +475,10 @@ function requestSettings(action) {
   if (action === "save") {
     const mappings = {};
     document.querySelectorAll('[data-mapping]').forEach(el => mappings[el.dataset.mapping] = el.value);
-    request.settings = {mode: $("#phoneMode").value, mappings};
+    request.settings = {mode: $("#phoneMode").value, mappings,
+      rightStickMode: $("#phoneRightStickMode").value,
+      mouseSpeed: Number($("#phoneMouseSpeed").value),
+      invertMouseY: !!$("#phoneInvertMouseY").checked};
   }
   clearTimeout(settingsTimer);
   let attempts = 0;
@@ -510,12 +519,15 @@ function receiveSettings(s) {
   }
   settingsLoaded = true;
   $("#phoneMode").value = s.mode;
+  $("#phoneRightStickMode").value = s.rightStickMode || 'keys';
+  $("#phoneMouseSpeed").value = s.mouseSpeed || 900;
+  $("#phoneInvertMouseY").checked = !!s.invertMouseY;
   const container = $("#phoneMappings"); container.textContent = "";
   for (const control of s.controls) {
-    const label = document.createElement("label"); label.textContent = control.replaceAll('_', ' ') + ' ';
+    const label = document.createElement("label"); label.textContent = (control === 'touchpad' ? 'Touchpad (click)' : control.replaceAll('_', ' ')) + ' ';
     const select = document.createElement("select"); select.dataset.mapping = control;
     for (const key of ['', ...s.keys]) {
-      const option = document.createElement("option"); option.value = key; option.textContent = key || 'Unassigned'; select.append(option);
+      const option = document.createElement("option"); option.value = key; option.textContent = key.startsWith('mouse_') ? 'Mouse ' + key.slice(6) + ' click' : key || 'Unassigned'; select.append(option);
     }
     select.value = s.mappings[control] || ''; label.append(select); container.append(label);
   }

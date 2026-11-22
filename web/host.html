@@ -15,8 +15,13 @@ body{margin:0;background:#16181f;color:#e8eaf0;font:17px/1.5 system-ui;text-alig
 <section style="text-align:left;background:#22252e;padding:20px;border-radius:12px">
 <h2>Input settings</h2>
 <p>For browser games choose Keyboard. Save, then click inside the game on the PC so it has keyboard focus. Phone presses type into the focused PC app, not just the game. Keep the game focused while playing.</p>
-<label>Output <select id="output"><option value="keyboard">Keyboard (browser games)</option><option value="gamepad">Virtual DualShock 4 (gamepad-compatible games)</option></select></label>
-<p>Each button can hold one key. Choose Unassigned to disable it. Stick directions are digital in keyboard mode.</p>
+<label>Output <select id="output"><option value="keyboard">Keyboard + mouse (browser games)</option><option value="gamepad">Virtual DualShock 4 (gamepad-compatible games)</option></select></label>
+<p>Map buttons—including <b>touchpad (click)</b>—to keyboard keys or mouse clicks. Choose Unassigned to disable a control.</p>
+<fieldset><legend>Mouse look (Keyboard + mouse mode only)</legend>
+<label>Right stick <select id="rightStickMode"><option value="keys">Mapped direction keys</option><option value="mouse">Mouse look / camera pan</option></select></label>
+<p><label>Speed (pixels/second at full tilt) <input id="mouseSpeed" type="number" min="100" max="3000" step="50" value="900"></label></p>
+<label><input id="invertMouseY" type="checkbox"> Invert vertical look</label>
+<p>Mouse look replaces the four right-stick direction mappings. R3 still uses its button mapping. Click inside the game on the PC first; games may require pointer lock for camera movement.</p></fieldset>
 <div id="mappings" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
 <p><button id="save">Save settings &amp; release held inputs</button></p>
 <div id="saveStatus" role="status"></div><p id="inputStatus"></p>
@@ -50,12 +55,15 @@ async function loadSettings() {
     if (!res.ok) throw new Error(await res.text());
     const s = await res.json();
     document.getElementById('output').value = s.mode;
+    document.getElementById('rightStickMode').value = s.rightStickMode || 'keys';
+    document.getElementById('mouseSpeed').value = s.mouseSpeed || 900;
+    document.getElementById('invertMouseY').checked = !!s.invertMouseY;
     const container = document.getElementById('mappings'); container.textContent = '';
     for (const control of s.controls) {
-      const label = document.createElement('label'); label.textContent = control.replaceAll('_', ' ') + ' ';
+      const label = document.createElement('label'); label.textContent = (control === 'touchpad' ? 'Touchpad (click)' : control.replaceAll('_', ' ')) + ' ';
       const select = document.createElement('select'); select.dataset.control = control;
       for (const key of ['', ...s.keys]) {
-        const option = document.createElement('option'); option.value = key; option.textContent = key || 'Unassigned'; select.append(option);
+        const option = document.createElement('option'); option.value = key; option.textContent = key.startsWith('mouse_') ? 'Mouse ' + key.slice(6) + ' click' : key || 'Unassigned'; select.append(option);
       }
       select.value = s.mappings[control] || ''; label.append(select); container.append(label);
     }
@@ -66,7 +74,10 @@ document.getElementById('save').onclick = async () => {
   document.querySelectorAll('[data-control]').forEach(el => mappings[el.dataset.control] = el.value);
   try {
     const res = await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({mode:document.getElementById('output').value, mappings})});
+      body:JSON.stringify({mode:document.getElementById('output').value, mappings,
+        rightStickMode:document.getElementById('rightStickMode').value,
+        mouseSpeed:Number(document.getElementById('mouseSpeed').value),
+        invertMouseY:document.getElementById('invertMouseY').checked})});
     const result = await res.json(); if (!res.ok) throw new Error(result.error || 'Save failed');
     document.getElementById('saveStatus').textContent = 'Saved. Click inside the PC game before using your phone.';
   } catch(e) { document.getElementById('saveStatus').textContent = e.message; }
