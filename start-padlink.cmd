@@ -29,6 +29,8 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if "%~1"=="--setup-only" exit /b 0
+
 ".venv\Scripts\python.exe" agent.py %*
 if errorlevel 1 (
   echo.

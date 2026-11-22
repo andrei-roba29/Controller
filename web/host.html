@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PadLink — PC dashboard</title>
+<style>
+body{margin:0;background:#16181f;color:#e8eaf0;font:17px/1.5 system-ui;text-align:center;padding:40px 20px}main{max-width:650px;margin:auto}h1{margin-bottom:0}p{color:#aeb4c5}#code{font:bold clamp(32px,8vw,60px) ui-monospace,monospace;letter-spacing:.16em;user-select:all}img{background:white;padding:12px;border-radius:14px;width:220px;height:220px}a{color:#82adff;overflow-wrap:anywhere}#status{padding:14px;background:#22252e;border-radius:12px;white-space:pre-line}button{padding:10px 20px;border:0;border-radius:8px;background:#4c8dff;color:white;font:inherit}small{color:#aeb4c5}
+</style><main>
+<h1>PadLink · PC dashboard</h1><p>Keep this PC running. The controller belongs on your phone.</p>
+<div id="status" role="status">Loading agent status…</div>
+<p>Joining code</p><div id="code">…</div>
+<p><img id="qr" alt="Scan on your phone to open the controller" hidden></p>
+<p>Scan with your <b>phone camera</b>, then tap Connect on the phone.<br>Or open this address on the phone and enter the joining code:</p>
+<p><a id="phone" target="_blank" rel="noopener"></a></p><button id="copy">Copy phone link</button>
+<p><small>This is the PC pairing screen, not the gamepad. You can close this tab; leave the agent running.<br>To launch automatically at Windows sign-in, double-click <b>enable-startup.cmd</b> once in your PadLink folder.</small></p>
+</main><script>
+let phoneUrl = '';
+async function refresh() {
+  try {
+    const res = await fetch('/status', {cache:'no-store'});
+    if (!res.ok) throw new Error('status unavailable');
+    const s = await res.json();
+    document.getElementById('code').textContent = s.room;
+    document.getElementById('status').textContent = s.status;
+    if (s.phoneUrl !== phoneUrl) {
+      phoneUrl = s.phoneUrl;
+      const a = document.getElementById('phone'); a.textContent = phoneUrl; a.href = phoneUrl;
+      const qr = document.getElementById('qr'); qr.src = '/qr.svg'; qr.hidden = !phoneUrl;
+    }
+  } catch (_) { document.getElementById('status').textContent = 'PC agent stopped or unreachable. Double-click start-padlink.cmd to restart it.'; }
+}
+document.getElementById('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(phoneUrl); document.getElementById('copy').textContent = 'Copied'; }
+  catch (_) { document.getElementById('copy').textContent = 'Select and copy the link above'; }
+};
+refresh(); setInterval(refresh, 2000);
+</script></html>
