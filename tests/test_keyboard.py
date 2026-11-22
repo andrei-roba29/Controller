@@ -1,8 +1,8 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
-from keyboard_output import Output, validate
+from unittest.mock import Mock, patch
+from keyboard_output import Output, validate, settings_reply
 
 
 class KeyboardTests(unittest.TestCase):
@@ -51,3 +51,23 @@ class KeyboardTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.output.configure({'mode':'gamepad','mappings':{}})
         self.assertEqual(old, self.output.settings)
+
+    def test_windows_letters_use_virtual_keys_not_unicode(self):
+        self.output.dry_run = False
+        self.output.key_code = Mock()
+        with patch('keyboard_output.sys.platform', 'win32'):
+            self.output.key('w')
+            self.output.key_code.from_vk.assert_called_once_with(0x57)
+            self.output.key('1')
+            self.output.key_code.from_vk.assert_called_with(0x31)
+            self.assertEqual(self.output.key('space'), 'SPACE')
+
+    def test_phone_settings_roundtrip(self):
+        reply = settings_reply(self.output, {'id': 'get1', 'action': 'get'})
+        self.assertEqual(reply['mappings']['options'], 'enter')
+        self.assertEqual(reply['id'], 'get1')
+        reply = settings_reply(self.output, {'id': 'save1', 'action': 'save',
+            'settings': {'mode': 'keyboard', 'mappings': {'options': 'esc'}}})
+        self.assertEqual(reply['mappings']['options'], 'esc')
+        self.assertEqual(Output(self.path, dry_run=True).settings['mappings']['options'], 'esc')
+        self.assertIn('error', settings_reply(self.output, {'id': 'bad', 'action': 'save', 'settings': {}}))

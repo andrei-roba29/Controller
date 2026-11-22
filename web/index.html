@@ -73,6 +73,8 @@ user-select:text;-webkit-user-select:text;touch-action:auto}
 #wrongdev code{background:#2b2f3a;padding:1px 5px;border-radius:5px;font-size:13px;color:var(--ink)}
 #wrongdev button{border:1px solid var(--edge);background:var(--body);color:var(--mute);
 border-radius:10px;padding:9px 14px;font:600 13px system-ui}
+#settingsPanel,#settingsPanel *{touch-action:auto;user-select:auto;-webkit-user-select:auto}
+#settingsPanel select{font-size:16px;max-width:100%;padding:6px}
 </style>
 </head>
 <body>
@@ -113,6 +115,13 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
   </details>
 </form>
 
+<div id="settingsPanel" hidden style="position:fixed;inset:0;z-index:50;background:#16181f;padding:20px;overflow:auto;touch-action:pan-y">
+<h2>Controller settings</h2><p>Options is a game button (Enter by default), not this settings menu.</p>
+<p>Choose Keyboard for browser games. Save, then click inside the game on your PC.</p>
+<label>Output <select id="phoneMode"><option value="keyboard">Keyboard</option><option value="gamepad">Virtual gamepad</option></select></label>
+<div id="phoneMappings" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0"></div>
+<button id="savePhoneSettings" disabled>Save</button> <button id="reloadPhoneSettings">Reload</button> <button id="closeSettings">Back to controller</button>
+<p id="settingsMessage" role="status"></p></div>
 <div id="pad">
  <div id="shell">
   <div class="shoulder l"><div class="btn sh" data-b="l2">L2</div><div class="btn sh" data-b="l1">L1</div></div>
@@ -131,6 +140,7 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
     <div class="row"><div class="btn sm" data-b="share">Share</div><div class="btn sm" data-b="options">Options</div></div>
     <div class="btn" id="touchpad" data-b="touchpad">Touchpad click</div>
     <div class="btn" id="ps" data-b="ps">PS</div>
+    <button id="openSettings" type="button" style="touch-action:manipulation">⚙ Settings</button>
     <div id="status"><span id="dot"></span><span id="stxt">Offline</span></div>
   </div>
 
@@ -217,7 +227,9 @@ function backToPair(message) {
 function connectLan(pin) {
   const scheme = location.protocol === "https:" ? "wss://" : "ws://";
   const ws = new WebSocket(scheme + location.host + "/ws?pin=" + encodeURIComponent(pin));
-  link = {send: o => ws.readyState === 1 && ws.send(JSON.stringify(o))};
+  link = {send: o => ws.readyState === 1 && ws.send(JSON.stringify(o)),
+    settings: o => ws.readyState === 1 && ws.send(JSON.stringify({type:"settings-request", ...o}))};
+  ws.onmessage = e => { try { const r = JSON.parse(e.data); if (r.type === "settings-response") receiveSettings(r); } catch (_) {} };
   ws.onopen = () => { retry = 0; enterPad(); setStatus(true, "Connected"); };
   ws.onclose = e => {
     link = null;
@@ -267,7 +279,7 @@ function connectRelay(room) {
       else if (state === "joining") setPairStatus("Joining room " + room + "…");
       else if (state === "joined") {
         setPairStatus("");
-        link = {send: o => relayClient.input(o)};
+        link = {send: o => relayClient.input(o), settings: o => relayClient.settings(o)};
         if ($("#pad").style.display !== "block") enterPad();
         setStatus(false, "Waiting for PC…");
         if (pcTimer) clearTimeout(pcTimer);
@@ -279,6 +291,7 @@ function connectRelay(room) {
         backToPair("Disconnected from the relay.");
       }
     },
+    onSettings: receiveSettings,
     onAlive: alive,
     onError: message => {
       link = null;
@@ -409,6 +422,55 @@ boot();
 // Refresh held inputs while connected: the PC releases keys if this stops.
 // Without this, a stationary stick / held button expires after INPUT_TIMEOUT.
 setInterval(() => { if (link && !document.hidden) flush(); }, 400);
+
+// Settings travel through the paired channel, never to localhost on the phone.
+let settingsRequest = null, settingsTimer = null;
+function requestSettings(action) {
+  if (!link?.settings) { $("#settingsMessage").textContent = "Not connected to the PC."; return; }
+  const id = String(Date.now()) + Math.random();
+  settingsRequest = id;
+  $("#savePhoneSettings").disabled = true;
+  $("#settingsMessage").textContent = "Waiting for PC…";
+  const request = {id, action};
+  if (action === "save") {
+    const mappings = {};
+    document.querySelectorAll('[data-mapping]').forEach(el => mappings[el.dataset.mapping] = el.value);
+    request.settings = {mode: $("#phoneMode").value, mappings};
+  }
+  clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(() => {
+    if (settingsRequest === id) {
+      settingsRequest = null;
+      $("#settingsMessage").textContent = "No reply from PC. Update and restart the PC agent, then Reload. Check the PC dashboard for errors.";
+    }
+  }, 7000);
+  link.settings(request);
+}
+function receiveSettings(s) {
+  if (s.id !== settingsRequest) return;
+  settingsRequest = null; clearTimeout(settingsTimer);
+  if (s.error) { $("#settingsMessage").textContent = s.error; return; }
+  $("#phoneMode").value = s.mode;
+  const container = $("#phoneMappings"); container.textContent = "";
+  for (const control of s.controls) {
+    const label = document.createElement("label"); label.textContent = control.replaceAll('_', ' ') + ' ';
+    const select = document.createElement("select"); select.dataset.mapping = control;
+    for (const key of ['', ...s.keys]) {
+      const option = document.createElement("option"); option.value = key; option.textContent = key || 'Unassigned'; select.append(option);
+    }
+    select.value = s.mappings[control] || ''; label.append(select); container.append(label);
+  }
+  $("#savePhoneSettings").disabled = false;
+  $("#settingsMessage").textContent = "PC replied · " + s.mode + " mode. Mappings are saved on the PC. Click inside the PC game before playing.";
+}
+$("#openSettings").onclick = () => {
+  st.b.clear(); st.lx = st.ly = st.rx = st.ry = 128;
+  document.querySelectorAll('.btn.on').forEach(el => el.classList.remove('on'));
+  flush(); $("#settingsPanel").hidden = false; requestSettings('get');
+};
+$("#closeSettings").onclick = () => { $("#settingsPanel").hidden = true; };
+$("#reloadPhoneSettings").onclick = () => requestSettings('get');
+$("#savePhoneSettings").onclick = () => requestSettings('save');
 
 // ------------------------------------------------------------------- buttons
 document.querySelectorAll("[data-b]").forEach(el => {

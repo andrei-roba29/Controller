@@ -16,7 +16,7 @@ async function run(desktop) {
       documentElement:{}, addEventListener(){}},
     window:{innerWidth:desktop ? 1200 : 390, matchMedia:()=>({matches:desktop})},
     location:{hash:'#K7M2QX9P', origin:'https://example.com', pathname:'/',search:''},
-    navigator:{}, screen:{}, history:{replaceState(){}},
+    navigator:{}, screen:{}, performance, history:{replaceState(){}},
     localStorage:{getItem(){},setItem(){}}, sessionStorage:{getItem(){},setItem(){}},
     setInterval(){},setTimeout(){},clearTimeout(){}, AbortController,
     fetch:async () => { fetches++; return {ok:false}; },
@@ -24,6 +24,20 @@ async function run(desktop) {
   };
   vm.runInNewContext(script, context);
   await new Promise(resolve => setImmediate(resolve));
+  // Settings must send over the connected channel, not fetch a phone-local URL.
+  vm.runInNewContext("link = {send() {}, settings(r) { globalThis.lastRequest = r; }}", context);
+  node('#openSettings').onclick();
+  assert.equal(node('#settingsPanel').hidden, false);
+  assert.equal(context.lastRequest.action, 'get');
+  context.reply = {id:context.lastRequest.id, mode:'keyboard', controls:[], keys:[], mappings:{}};
+  vm.runInNewContext('receiveSettings(reply)', context);
+  assert.equal(node('#savePhoneSettings').disabled, false);
+  assert.match(node('#settingsMessage').textContent, /PC replied/);
+  node('#savePhoneSettings').onclick();
+  assert.equal(context.lastRequest.action, 'save');
+  node('#closeSettings').onclick();
+  assert.equal(node('#settingsPanel').hidden, true);
+  assert.match(html, /data-b="options">Options/);
   assert.equal(sockets, 0, 'no automatic controller connection on either device');
   if(desktop) {
     assert.equal(fetches,0, 'desktop stays on PC pairing screen');

@@ -152,8 +152,11 @@ In the **local PC dashboard** (`http://127.0.0.1:8765/host`), use **Input settin
 Defaults: left stick = WASD, D-pad = arrows, cross = Space, circle = E,
 square = Q, triangle = R, Options = Enter. Settings persist in `settings.json`
 in the agent folder. Keyboard mode uses `pynput`; run the updated launcher once
-to install it. It needs no ViGEmBus driver. Settings currently live on the relay
-mode dashboard; LAN mode uses the same saved file.
+to install it. It needs no ViGEmBus driver. You can also tap **⚙ Settings** on the phone controller to load and save
+these mappings over the paired connection (relay and LAN). Both phone and PC
+must be updated. **Options** remains a game input (Enter by default), not the
+settings menu. If Settings reports no PC reply, update/restart the PC agent and
+check its dashboard. Anyone with the pairing code can change these mappings.
 
 The dashboard reports the age of the last phone snapshot and currently held
 keyboard keys. If snapshots arrive but a game ignores them, check focus and its
@@ -198,7 +201,7 @@ hours of active play.
 
 ## Updating
 
-The agent prints its version (`PadLink 1.5.0`) in the startup box and in the
+The agent prints its version (`PadLink 1.6.0`) in the startup box and in the
 `--check` report, so you can always tell which build you are running.
 
 - **Downloaded as a ZIP** (the folder is called `Controller-main`): GitHub will
@@ -297,3 +300,13 @@ Tests cover dashboard status/QR, driver failure visibility, loopback Host
 validation, duplicate-agent protection, browser launch target, and desktop vs
 phone pairing. Windows Startup shortcuts and real ViGEmBus/controller behavior
 must be verified on Windows.
+
+### Keyboard events arrive but browser games ignore letters
+
+Version 1.6.0 sends letters and digits as Windows virtual-key events instead of
+Unicode text injection, so browser games can see normal keydown/code events.
+Restart the updated PC agent; a website-only deployment cannot update Windows
+input handling. Keep Keyboard mode selected and click the game on the PC.
+Try Notepad first with the left stick (WASD). If Notepad receives nothing,
+check the dashboard input age and agent errors; if Notepad works but the game
+doesn't, verify its bindings/focus and whether it blocks simulated input.

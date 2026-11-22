@@ -1,5 +1,6 @@
 """Saved keyboard mappings and held-key reconciliation for browser games."""
 import json
+import sys
 from pathlib import Path
 
 CONTROLS = ('up down left right cross circle square triangle l1 r1 l2 r2 '
@@ -42,9 +43,10 @@ class Output:
         if self.dry_run:
             return
         if mode == 'keyboard' and self.keyboard is None:
-            from pynput.keyboard import Controller, Key
+            from pynput.keyboard import Controller, Key, KeyCode
             self.keyboard = Controller()
             self.key_class = Key
+            self.key_code = KeyCode
         if mode == 'gamepad' and self.gamepad is None:
             from pad import Pad
             self.gamepad = Pad()
@@ -59,6 +61,10 @@ class Output:
         self.settings = value
 
     def key(self, name):
+        # Character injection uses KEYEVENTF_UNICODE on Windows. Games generally
+        # listen for physical keydown/code, so send a virtual-key event instead.
+        if len(name) == 1 and sys.platform == 'win32' and not self.dry_run:
+            return self.key_code.from_vk(ord(name.upper()))
         return name if len(name) == 1 else getattr(self.key_class, name)
 
     def apply(self, msg):
@@ -94,3 +100,18 @@ class Output:
         self.held.clear()
         if self.gamepad:
             self.gamepad.reset()
+
+
+def settings_reply(output, request):
+    """Same settings protocol for authenticated LAN and paired relay phones."""
+    request_id = request.get('id')
+    if not isinstance(request_id, str) or len(request_id) > 80:
+        return {'error': 'Invalid request id'}
+    try:
+        if request.get('action') == 'save':
+            output.configure(request.get('settings'))
+        elif request.get('action') != 'get':
+            raise ValueError('Unknown settings action')
+        return {'id': request_id, **output.settings, 'controls': CONTROLS, 'keys': KEYS}
+    except Exception as exc:
+        return {'id': request_id, 'error': str(exc)}
