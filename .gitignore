@@ -5,3 +5,5 @@ __pycache__/
 node_modules/
 .netlify/
 room.txt
+settings.json
+settings.tmp

@@ -406,6 +406,10 @@ setTimeout(() => { const b = $("#go"); if (b) b.disabled = false; }, 6000);
 
 boot();
 
+// Refresh held inputs while connected: the PC releases keys if this stops.
+// Without this, a stationary stick / held button expires after INPUT_TIMEOUT.
+setInterval(() => { if (link && !document.hidden) flush(); }, 400);
+
 // ------------------------------------------------------------------- buttons
 document.querySelectorAll("[data-b]").forEach(el => {
   const name = el.dataset.b;

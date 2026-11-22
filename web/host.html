@@ -11,6 +11,16 @@ body{margin:0;background:#16181f;color:#e8eaf0;font:17px/1.5 system-ui;text-alig
 <p>Scan with your <b>phone camera</b>, then tap Connect on the phone.<br>Or open this address on the phone and enter the joining code:</p>
 <p><a id="phone" target="_blank" rel="noopener"></a></p><button id="copy">Copy phone link</button>
 <p><small>This is the PC pairing screen, not the gamepad. You can close this tab; leave the agent running.<br>To launch automatically at Windows sign-in, double-click <b>enable-startup.cmd</b> once in your PadLink folder.</small></p>
+<section style="text-align:left;background:#22252e;padding:20px;border-radius:12px">
+<h2>Input settings</h2>
+<p>For browser games choose Keyboard. Save, then click inside the game on the PC so it has keyboard focus. Phone presses type into the focused PC app, not just the game. Keep the game focused while playing.</p>
+<label>Output <select id="output"><option value="keyboard">Keyboard (browser games)</option><option value="gamepad">Virtual DualShock 4 (gamepad-compatible games)</option></select></label>
+<p>Each button can hold one key. Choose Unassigned to disable it. Stick directions are digital in keyboard mode.</p>
+<div id="mappings" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
+<p><button id="save">Save settings &amp; release held inputs</button></p>
+<div id="saveStatus" role="status"></div><p id="inputStatus"></p>
+<p><b>Safety:</b> inputs release on disconnect or after a short input timeout. Do not use this to type passwords. Windows may block input into elevated apps or games that reject simulated keys.</p>
+</section>
 </main><script>
 let phoneUrl = '';
 async function refresh() {
@@ -20,6 +30,7 @@ async function refresh() {
     const s = await res.json();
     document.getElementById('code').textContent = s.room;
     document.getElementById('status').textContent = s.status;
+    document.getElementById('inputStatus').textContent = s.inputAge == null ? 'No phone input received yet.' : 'Last phone input: ' + s.inputAge + 's ago · Held keys: ' + (s.heldKeys.join(', ') || 'none');
     if (s.phoneUrl !== phoneUrl) {
       phoneUrl = s.phoneUrl;
       const a = document.getElementById('phone'); a.textContent = phoneUrl; a.href = phoneUrl;
@@ -31,5 +42,32 @@ document.getElementById('copy').onclick = async () => {
   try { await navigator.clipboard.writeText(phoneUrl); document.getElementById('copy').textContent = 'Copied'; }
   catch (_) { document.getElementById('copy').textContent = 'Select and copy the link above'; }
 };
-refresh(); setInterval(refresh, 2000);
+async function loadSettings() {
+  try {
+    const res = await fetch('/settings', {cache:'no-store'});
+    if (!res.ok) throw new Error(await res.text());
+    const s = await res.json();
+    document.getElementById('output').value = s.mode;
+    const container = document.getElementById('mappings'); container.textContent = '';
+    for (const control of s.controls) {
+      const label = document.createElement('label'); label.textContent = control.replaceAll('_', ' ') + ' ';
+      const select = document.createElement('select'); select.dataset.control = control;
+      for (const key of ['', ...s.keys]) {
+        const option = document.createElement('option'); option.value = key; option.textContent = key || 'Unassigned'; select.append(option);
+      }
+      select.value = s.mappings[control] || ''; label.append(select); container.append(label);
+    }
+  } catch(e) { document.getElementById('saveStatus').textContent = 'Settings unavailable: ' + e.message; }
+}
+document.getElementById('save').onclick = async () => {
+  const mappings = {};
+  document.querySelectorAll('[data-control]').forEach(el => mappings[el.dataset.control] = el.value);
+  try {
+    const res = await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode:document.getElementById('output').value, mappings})});
+    const result = await res.json(); if (!res.ok) throw new Error(result.error || 'Save failed');
+    document.getElementById('saveStatus').textContent = 'Saved. Click inside the PC game before using your phone.';
+  } catch(e) { document.getElementById('saveStatus').textContent = e.message; }
+};
+refresh(); loadSettings(); setInterval(refresh, 2000);
 </script></html>

@@ -34,10 +34,11 @@ from pathlib import Path
 from urllib.parse import quote
 
 from pad import Pad, new_pin, new_room_code
+from keyboard_output import Output, CONTROLS, KEYS
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 DEFAULT_REALTIME = "https://ljvafmdhcpxbtstaljqb.supabase.co"
 HEARTBEAT_EVERY = 24.0
 PC_ALIVE_EVERY = 2.0
@@ -184,6 +185,9 @@ class Relay:
                     last_input = 0.0
                     self.session.input(None)
                 continue
+            if last_input and time.monotonic() - last_input > INPUT_TIMEOUT:
+                last_input = 0.0
+                self.session.input(None)
             msg = json.loads(raw)
             event = msg.get("event")
             if event == "broadcast":
@@ -245,7 +249,23 @@ def run_lan(args, session: Session, pin: str) -> None:
     print(f"  Or open on this PC: {scheme}://localhost:{args.port}/host")
     print("==============================\n", flush=True)
 
-    active = {"ws": None}
+    active = {"ws": None, "last_input": 0.0}
+
+    async def release_stale(app):
+        async def watch():
+            while True:
+                await asyncio.sleep(0.2)
+                if active["last_input"] and time.monotonic() - active["last_input"] > INPUT_TIMEOUT:
+                    active["last_input"] = 0.0
+                    session.input(None)
+        task = asyncio.create_task(watch())
+        try:
+            yield
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            session.pad.reset()
+
 
     async def ws_handler(request):
         ws = web.WebSocketResponse(heartbeat=10)
@@ -260,6 +280,7 @@ def run_lan(args, session: Session, pin: str) -> None:
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
+                    active["last_input"] = time.monotonic()
                     session.input(json.loads(msg.data))
         finally:
             if active["ws"] is ws:
@@ -276,6 +297,7 @@ def run_lan(args, session: Session, pin: str) -> None:
         return web.json_response({"app": "padlink", "mode": "lan"})
 
     app = web.Application()
+    app.cleanup_ctx.append(release_stale)
     app.add_routes([
         web.get("/ws", ws_handler),
         web.get("/host", host),
@@ -305,7 +327,7 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
     from aiohttp import web
 
     phone_url = f"{site.rstrip('/')}/#{room}" if site else ""
-    state = {"room": room, "phoneUrl": phone_url, "status": "Starting virtual controller…"}
+    state = {"room": room, "phoneUrl": phone_url, "status": "Starting input output…"}
     dashboard_url = f"http://127.0.0.1:{args.port}/host"
 
     @web.middleware
@@ -321,8 +343,29 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
     async def host(request):
         return web.FileResponse(WEB / "host.html")
 
+    output = None
+
     async def status(request):
-        return web.json_response(state)
+        import time
+        return web.json_response({**state,
+            "inputAge": round(time.monotonic() - output.last_input, 1)
+                        if output and output.last_input else None,
+            "heldKeys": sorted(output.held) if output else []})
+
+    async def settings(request):
+        if output is None:
+            raise web.HTTPServiceUnavailable(text="Output not ready; check agent status.")
+        if request.method == "POST":
+            # Do not allow other websites to change OS-level input mappings.
+            if request.headers.get("Origin") not in (None, f"http://{request.host}"):
+                raise web.HTTPForbidden()
+            if request.content_type != "application/json":
+                raise web.HTTPUnsupportedMediaType()
+            try:
+                output.configure(await request.json())
+            except (ValueError, OSError, RuntimeError, ImportError) as exc:
+                return web.json_response({"error": str(exc)}, status=400)
+        return web.json_response({**output.settings, "controls": CONTROLS, "keys": KEYS})
 
     async def qr(request):
         import qrcode
@@ -334,7 +377,8 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
 
     app = web.Application(middlewares=[local_only])
     app.add_routes([web.get("/", host), web.get("/host", host),
-                    web.get("/status", status), web.get("/qr.svg", qr)])
+                    web.get("/status", status), web.get("/qr.svg", qr),
+                    web.get("/settings", settings), web.post("/settings", settings)])
     runner = web.AppRunner(app)
     await runner.setup()
     try:
@@ -352,10 +396,11 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
     pad = None
     try:
         try:
-            pad = Pad(dry_run=args.dry_run)
+            pad = Output(ROOT / "settings.json", dry_run=args.dry_run)
+            output = pad
         except Exception as exc:
-            state["status"] = (f"Virtual controller FAILED: {exc}\n"
-                               "Install ViGEmBus, reboot, then restart PadLink. "
+            state["status"] = (f"Input output FAILED: {exc}\n"
+                               "Keyboard mode needs pynput; gamepad mode needs ViGEmBus. "
                                "For diagnostics, run .\\start-padlink.cmd --check in PowerShell.")
             print(state["status"], flush=True)
             await asyncio.Event().wait()
@@ -364,7 +409,7 @@ async def run_relay_dashboard(args, room: str, site: str, api_key: str, base: st
             state["status"] = "Relay unavailable: missing anon key in web/config.json."
             await asyncio.Event().wait()
             return
-        state["status"] = "Virtual controller ready. Connecting to relay…"
+        state["status"] = "Input output ready. Connecting to relay…"
         relay = Relay(base, api_key, room, Session(pad), verbose=args.verbose,
                       on_status=lambda message: state.update(status=message))
         await relay.run()
@@ -459,7 +504,7 @@ def run_check(cfg: dict, args) -> int:
     v = sys.version_info
     rows.append(("Python", f"{v.major}.{v.minor}.{v.micro} (need 3.10+)", v >= (3, 10)))
 
-    for module in ("aiohttp", "websockets", "vgamepad"):
+    for module in ("aiohttp", "websockets", "qrcode", "pynput" if sys.platform == "win32" else "json"):
         try:
             importlib.import_module(module)
             rows.append((module, "installed", True))
@@ -476,7 +521,7 @@ def run_check(cfg: dict, args) -> int:
         except OSError:
             out = ""
         driver = "RUNNING" in out
-        rows.append(("ViGEmBus driver", "running" if driver else "not installed", driver))
+        rows.append(("ViGEmBus driver", "running" if driver else "not installed (optional: gamepad mode only)", True))
     else:
         rows.append(("ViGEmBus driver", "n/a (Windows only)", True))
 
@@ -543,7 +588,7 @@ def main() -> None:
     if args.lan:
         session_pad = None
         try:
-            session_pad = Pad(dry_run=args.dry_run)
+            session_pad = Output(ROOT / "settings.json", dry_run=args.dry_run)
         except Exception as exc:  # noqa: BLE001
             print("Could not create the virtual controller:", exc, flush=True)
             print("Install the ViGEmBus driver: "

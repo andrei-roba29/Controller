@@ -1,6 +1,8 @@
 import asyncio
 import socket
 import unittest
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -64,8 +66,26 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
             async with self.client.get(self.base + '/status', headers={'Host': 'attacker.example'}) as res:
                 self.assertEqual(res.status, 403)
 
+    async def test_settings_api_and_origin_protection(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(agent, 'ROOT', Path(folder)), patch.object(agent, 'Relay', FakeRelay):
+            await self.start()
+            async with self.client.get(self.base + '/settings') as res:
+                settings = await res.json()
+                self.assertEqual(settings['mode'], 'keyboard')
+                self.assertEqual(settings['mappings']['cross'], 'space')
+            payload = {'mode': 'keyboard', 'mappings': {'cross': 'x'}}
+            async with self.client.post(self.base + '/settings', json=payload,
+                                       headers={'Origin':'https://attacker.example'}) as res:
+                self.assertEqual(res.status, 403)
+            async with self.client.post(self.base + '/settings', json=payload,
+                                       headers={'Origin': self.base}) as res:
+                self.assertEqual(res.status, 200)
+            self.assertTrue((Path(folder) / 'settings.json').exists())
+            async with self.client.post(self.base + '/settings', json={'mode': 'bad'}) as res:
+                self.assertEqual(res.status, 400)
+
     async def test_missing_driver_keeps_code_visible(self):
-        with patch.object(agent, 'Pad', side_effect=RuntimeError('driver missing')):
+        with patch.object(agent, 'Output', side_effect=RuntimeError('driver missing')):
             state = await self.start()
             self.assertIn('FAILED', state['status'])
             self.assertEqual(state['room'], 'K7M2QX9P')
@@ -80,7 +100,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
     async def test_second_agent_does_not_create_another_pad(self):
         with patch.object(agent, 'Relay', FakeRelay):
             await self.start()
-            with patch.object(agent, 'Pad') as pad:
+            with patch.object(agent, 'Output') as pad:
                 await agent.run_relay_dashboard(self.args, 'ABCDEFGH', '', '', '')
                 pad.assert_not_called()
 

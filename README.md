@@ -1,6 +1,6 @@
 # PadLink
 
-Use your phone as a PS4 (DualShock 4) controller on your Windows PC — including
+Use your phone as a configurable keyboard or PS4 (DualShock 4) controller on your Windows PC — including
 from outside your home network.
 
 ```
@@ -8,7 +8,7 @@ from outside your home network.
 ```
 
 The phone shows a controller. Every input is broadcast to a room; the agent on
-your PC listens in that room and drives a virtual DualShock 4 with
+your PC listens in that room and sends keyboard input (default), or drives a virtual DualShock 4 with
 [vgamepad](https://github.com/yannbouteiller/vgamepad). The PC only makes
 **outbound** connections: no port forwarding, no router config, no firewall
 rules, no Netlify server.
@@ -16,7 +16,7 @@ rules, no Netlify server.
 ## Why a plain Netlify deploy does not work
 
 Netlify hosts static files and short-lived functions. PadLink needs a long-lived
-process that owns a Windows kernel driver and a virtual gamepad, so the PC has to
+process that sends OS keyboard input or owns a virtual gamepad, so the PC has to
 be the thing driving the controller. Netlify's job here is only to serve the
 phone app (the files in `web/`); Supabase is the wire between the two.
 
@@ -25,12 +25,11 @@ phone app (the files in `web/`); Supabase is the wire between the two.
 ### 1. PC — the agent
 
 1. Windows 10/11, Python 3.10 or newer.
-2. Install the **ViGEmBus driver**: https://github.com/nefarius/ViGEmBus/releases
-   (download the `ViGEmBus_*_x64.msi`, run it, reboot). Without it Windows has no
-   virtual-controller support and the agent will tell you so on startup.
+2. **Optional, gamepad mode only:** install the **ViGEmBus driver**: https://github.com/nefarius/ViGEmBus/releases
+   (download the `ViGEmBus_*_x64.msi`, run it, reboot). Keyboard mode does not require this driver.
 3. Run **`start-padlink.cmd`** (double-click it, or in a terminal:
    `.\start-padlink.cmd`). First run creates `.venv` and installs `aiohttp`,
-   `websockets` and `vgamepad`.
+   `websockets`, `qrcode`, `pynput` and `vgamepad`.
 
 > **In PowerShell, keep the `.\` prefix.** Windows only runs programs from the
 > current folder when you say so, otherwise it reports *"The term
@@ -59,9 +58,13 @@ and error instead of disappearing.
 Double-click **`enable-startup.cmd`** once. It installs the dependencies, creates
 a per-user Windows Startup shortcut, and opens the agent/dashboard now. After
 that, signing into Windows starts the agent in a minimized console automatically
-without opening a browser tab. Visit the PadLink website on the PC and click
+and opens the joining dashboard in your default browser. Visit the PadLink website on the PC and click
 **Open PC dashboard & joining code**, or bookmark <http://127.0.0.1:8765/host>.
 No administrator access is needed for this shortcut (the driver may need it).
+**If you enabled startup with an older version, run `enable-startup.cmd` again**
+to replace the old shortcut that included `--no-browser`. Check Windows
+Settings → Apps → Startup if Windows has disabled PadLink. Opening the hosted
+website alone cannot start the local agent.
 
 - Double-click **`disable-startup.cmd`** to remove automatic startup. This does
   not stop an already running agent; restore its console and press `Ctrl+C`.
@@ -135,10 +138,39 @@ to the WebSocket transport automatically.
 | `--port 8765` | Local PC dashboard / LAN server port |
 | `--verbose` | Log every websocket frame |
 
+## Browser games and keyboard settings
+
+Many browser games accept keyboard input but do not support a DualShock 4.
+In the **local PC dashboard** (`http://127.0.0.1:8765/host`), use **Input settings**:
+
+1. Choose **Keyboard** (the default for new settings).
+2. Choose a replacement key for every button and stick direction; Unassigned
+   disables that control. Click **Save settings & release held inputs**.
+3. **Click inside the game on the PC** so it receives keyboard focus. Then use
+   the phone. Inputs go to the focused Windows app, not to a particular tab.
+
+Defaults: left stick = WASD, D-pad = arrows, cross = Space, circle = E,
+square = Q, triangle = R, Options = Enter. Settings persist in `settings.json`
+in the agent folder. Keyboard mode uses `pynput`; run the updated launcher once
+to install it. It needs no ViGEmBus driver. Settings currently live on the relay
+mode dashboard; LAN mode uses the same saved file.
+
+The dashboard reports the age of the last phone snapshot and currently held
+keyboard keys. If snapshots arrive but a game ignores them, check focus and its
+key bindings. Elevated apps, anti-cheat, and games that reject simulated input
+may not work. Switch to **Virtual DualShock 4** only for gamepad-aware games;
+this requires ViGEmBus. Windows `joy.cpl` can test that controller separately.
+
+Do not leave a text editor, password field, or another sensitive app focused
+while using keyboard mode. Closing/hiding the phone or a lost connection
+releases held keys; Save also releases current input before applying mappings.
+
 ## How much latency / traffic
 
-Input is capped at 20 messages per second per phone, and only when something
-changes — an idle controller sends nothing but a 0.5 msg/s keepalive from the PC.
+Stick movement is coalesced at 20 Hz; button edges send immediately. The phone
+also refreshes its full input snapshot every 400 ms, so held keys/sticks do not
+time out. The PC sends a 0.5 msg/s keepalive. Input stops and keys release after
+about 1.2 seconds without phone snapshots.
 Expect roughly an extra 40–90 ms on top of whatever your phone and PC already
 have to the internet. Fine for most games; not for rhythm games or fighting-game
 tournaments. Use `--lan` when you want the lowest number.
@@ -147,6 +179,9 @@ Supabase's free tier includes 2M Realtime messages/month, which is roughly 25–
 hours of active play.
 
 ## Security
+
+- Keyboard mode injects the configured keys into the active Windows app. Anyone
+  with the room code can send these inputs while the agent runs.
 
 - The anon key in `web/config.json` is public by design. RLS policies
   (`supabase.sql`) restrict it to topics named `padlink:<8 chars>`, so it cannot
@@ -163,7 +198,7 @@ hours of active play.
 
 ## Updating
 
-The agent prints its version (`PadLink 1.4.0`) in the startup box and in the
+The agent prints its version (`PadLink 1.5.0`) in the startup box and in the
 `--check` report, so you can always tell which build you are running.
 
 - **Downloaded as a ZIP** (the folder is called `Controller-main`): GitHub will

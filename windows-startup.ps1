@@ -14,7 +14,7 @@ if (!(Test-Path -LiteralPath $python)) { throw 'Run enable-startup.cmd to instal
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $python
-$shortcut.Arguments = '"' + $agent + '" --no-browser'
+$shortcut.Arguments = '"' + $agent + '"'
 $shortcut.WorkingDirectory = $PSScriptRoot
 $shortcut.WindowStyle = 7 # Minimized console; restore it to see errors or stop with Ctrl+C.
 $shortcut.Description = 'PadLink phone controller PC agent'
