@@ -310,3 +310,25 @@ input handling. Keep Keyboard mode selected and click the game on the PC.
 Try Notepad first with the left stick (WASD). If Notepad receives nothing,
 check the dashboard input age and agent errors; if Notepad works but the game
 doesn't, verify its bindings/focus and whether it blocks simulated input.
+
+### Phone tap accuracy (web 1.6.1)
+
+The controller now scales as a single layout inside the phone's safe area,
+including when browser bars or orientation change. Settings, touchpad, face
+buttons, and sticks have separate hit regions; pressed buttons no longer
+shrink their hit boxes. Sticks retain the finger that started the gesture,
+so a second touch cannot take over or release that stick.
+
+Deploy the updated `web/` files and reload the phone page to receive this fix;
+the PC agent does not need updating for this layout-only change.
+
+Optional Linux Chromium regression checks (dependencies stay in ignored
+`node_modules/`):
+
+```
+npm install --no-save --package-lock=false playwright @sparticuz/chromium
+node tests/test_touch_layout.cjs
+```
+
+These check hit testing and non-overlap at nine landscape viewport sizes,
+including actual touch taps on Triangle and Settings.

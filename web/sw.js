@@ -1,4 +1,4 @@
-const CACHE = "padlink-v7";
+const CACHE = "padlink-v8";
 const SHELL = ["./", "./index.html", "./relay.js", "./diag.html", "./version.json", "./config.json", "./manifest.json",
                "./icon-192.png", "./icon-512.png"];
 

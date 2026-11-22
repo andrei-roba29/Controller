@@ -30,31 +30,37 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:16px s
 #err{color:var(--cir);min-height:1.4em}
 #pstatus{color:var(--mute);font-size:13px;min-height:1.2em}
 #mode{font-size:12px;color:var(--mute);letter-spacing:.04em;text-transform:uppercase}
-#pad{position:fixed;inset:0;display:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-#shell{position:absolute;inset:14px;border-radius:44px;background:var(--body);border:2px solid var(--edge);
-display:grid;grid-template-columns:1fr 1.1fr 1fr;grid-template-rows:auto 1fr;gap:8px;padding:16px 28px}
-.shoulder{display:flex;gap:10px;grid-row:1}
-.shoulder.l{grid-column:1}.shoulder.r{grid-column:3;justify-content:flex-end}
+/* One fixed-proportion stage is scaled as a whole. Never shrink individual
+   flex children: their old minimum sizes overflowed into neighbouring targets. */
+#pad{position:fixed;inset:0;display:none}
+#padViewport{position:absolute;top:max(8px,env(safe-area-inset-top));bottom:max(8px,env(safe-area-inset-bottom));left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right))}
+#shell{position:absolute;left:50%;top:50%;width:900px;height:460px;border-radius:32px;background:var(--body);border:2px solid var(--edge);
+transform:translate(-50%,-50%) scale(var(--pad-scale, .5));transform-origin:center;
+display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr);grid-template-rows:48px minmax(0,1fr);gap:12px;padding:16px 24px}
+#shell *{min-width:0;flex-shrink:0}
+.shoulder{display:flex;gap:12px;grid-row:1;justify-content:center}
+.shoulder.l{grid-column:1}.shoulder.r{grid-column:3}
 .btn{border:2px solid var(--edge);background:#2b2f3a;border-radius:14px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-weight:600;position:relative}
-.btn.on{background:#fff3;border-color:#fff;transform:scale(.95)}
-.sh{width:84px;height:40px}
-.col{display:flex;flex-direction:column;align-items:center;justify-content:space-around;grid-row:2}
-.mid{grid-column:2;grid-row:1/3;display:flex;flex-direction:column;align-items:center;gap:12px;justify-content:center}
-#touchpad{width:100%;max-width:300px;height:44%;border-radius:18px;color:var(--mute);font-weight:400;font-size:14px}
+/* Keep hit boxes fixed while pressed; only change paint, never geometry. */
+.btn.on{background:#fff3;border-color:#fff}
+.sh{width:90px;height:48px}
+.col{display:flex;flex-direction:column;align-items:center;justify-content:space-between;grid-row:2;min-height:0;gap:12px}
+.mid{grid-column:2;grid-row:1/3;display:flex;flex-direction:column;align-items:center;gap:14px;justify-content:center;min-height:0}
+#touchpad{width:240px;height:96px;border-radius:18px;color:var(--mute);font-weight:400;font-size:16px}
 .row{display:flex;gap:16px}
-.sm{width:62px;height:30px;font-size:12px;border-radius:15px}
+.sm{width:100px;height:48px;font-size:16px;border-radius:15px}
 #ps{width:48px;height:48px;border-radius:50%}
-#status{font-size:12px;color:var(--mute);display:flex;gap:6px;align-items:center}
+#openSettings{width:180px;height:56px;border:2px solid #82adff;border-radius:14px;background:#244577;color:#fff;font:600 18px system-ui;touch-action:none}
+#status{font-size:14px;color:var(--mute);display:flex;gap:6px;align-items:center;height:20px}
 #dot{width:8px;height:8px;border-radius:50%;background:var(--cir)}
-.dpad{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(3,56px);gap:2px}
+.dpad{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(3,56px);gap:4px;width:176px;height:176px}
 .dpad .btn{border-radius:12px;font-size:20px}
 .faces{position:relative;width:176px;height:176px}
-.faces .btn{position:absolute;width:62px;height:62px;border-radius:50%;font-size:26px}
+.faces .btn{position:absolute;width:56px;height:56px;border-radius:50%;font-size:26px}
 .stick{width:128px;height:128px;border-radius:50%;background:#171920;border:2px solid var(--edge);position:relative}
 .knob{position:absolute;left:50%;top:50%;width:70px;height:70px;margin:-35px 0 0 -35px;border-radius:50%;background:#3a3f4e;border:2px solid #555b6e;pointer-events:none}
-.l3{width:44px;height:26px;font-size:11px;border-radius:13px}
+.l3{width:64px;height:40px;font-size:14px;border-radius:13px}
 .sg{display:flex;flex-direction:column;align-items:center;gap:6px}
-@media (max-height:420px){.stick{width:104px;height:104px}.faces{transform:scale(.85)}.dpad{transform:scale(.85)}}
 @media (orientation:portrait){body.playing #rot{display:flex}}
 #rot{display:none;position:fixed;inset:0;background:var(--bg);z-index:9;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mute)}
 #pchint{display:none;position:fixed;top:0;left:0;right:0;z-index:20;background:#3a2d10;color:#ffd479;
@@ -123,6 +129,7 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
 <button id="savePhoneSettings" disabled>Save</button> <button id="reloadPhoneSettings">Reload</button> <button id="closeSettings">Back to controller</button>
 <p id="settingsMessage" role="status"></p></div>
 <div id="pad">
+ <div id="padViewport">
  <div id="shell">
   <div class="shoulder l"><div class="btn sh" data-b="l2">L2</div><div class="btn sh" data-b="l1">L1</div></div>
   <div class="shoulder r"><div class="btn sh" data-b="r1">R1</div><div class="btn sh" data-b="r2">R2</div></div>
@@ -140,19 +147,20 @@ link on your <b>phone</b>, then point the phone at the PC.</div>
     <div class="row"><div class="btn sm" data-b="share">Share</div><div class="btn sm" data-b="options">Options</div></div>
     <div class="btn" id="touchpad" data-b="touchpad">Touchpad click</div>
     <div class="btn" id="ps" data-b="ps">PS</div>
-    <button id="openSettings" type="button" style="touch-action:manipulation">⚙ Settings</button>
+    <button id="openSettings" type="button">⚙ Settings</button>
     <div id="status"><span id="dot"></span><span id="stxt">Offline</span></div>
   </div>
 
   <div class="col" style="grid-column:3">
     <div class="faces">
-      <div class="btn" data-b="triangle" style="left:57px;top:0;color:var(--tri)">△</div>
-      <div class="btn" data-b="circle" style="right:0;top:57px;color:var(--cir)">○</div>
-      <div class="btn" data-b="cross" style="left:57px;bottom:0;color:var(--cro)">✕</div>
-      <div class="btn" data-b="square" style="left:0;top:57px;color:var(--squ)">□</div>
+      <div class="btn" data-b="triangle" style="left:60px;top:0;color:var(--tri)">△</div>
+      <div class="btn" data-b="circle" style="right:0;top:60px;color:var(--cir)">○</div>
+      <div class="btn" data-b="cross" style="left:60px;bottom:0;color:var(--cro)">✕</div>
+      <div class="btn" data-b="square" style="left:0;top:60px;color:var(--squ)">□</div>
     </div>
     <div class="sg"><div class="stick" data-s="r"><div class="knob"></div></div><div class="btn l3" data-b="r3">R3</div></div>
   </div>
+ </div>
  </div>
 </div>
 
@@ -202,9 +210,20 @@ function goFull() {
   navigator.wakeLock?.request("screen").then(w => wake = w).catch(() => {});
 }
 
+function fitController() {
+  const viewport = $("#padViewport");
+  if (!viewport.clientWidth || !viewport.clientHeight) return;
+  const scale = Math.min(viewport.clientWidth / 900, viewport.clientHeight / 460, 1.5);
+  $("#shell").style.setProperty("--pad-scale", String(scale));
+}
+window.addEventListener("resize", fitController);
+window.visualViewport?.addEventListener("resize", fitController);
+if (typeof ResizeObserver !== "undefined") new ResizeObserver(fitController).observe($("#padViewport"));
+
 function enterPad() {
   $("#pair").style.display = "none";
   $("#pad").style.display = "block";
+  fitController();
   document.body.classList.add("playing");
   setStatus(true, mode === "relay" ? "Connecting…" : "Connected");
   store("last:" + mode, code);
@@ -475,16 +494,23 @@ $("#savePhoneSettings").onclick = () => requestSettings('save');
 // ------------------------------------------------------------------- buttons
 document.querySelectorAll("[data-b]").forEach(el => {
   const name = el.dataset.b;
+  const pointers = new Set();
   el.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    pointers.add(e.pointerId);
     el.setPointerCapture(e.pointerId);
     st.b.add(name);
     el.classList.add("on");
     navigator.vibrate && navigator.vibrate(8);
     mark(true);
   });
-  const up = () => { st.b.delete(name); el.classList.remove("on"); mark(true); };
+  const up = e => {
+    if (!pointers.delete(e.pointerId) || pointers.size) return;
+    st.b.delete(name); el.classList.remove("on"); mark(true);
+  };
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
+  el.addEventListener("lostpointercapture", up);
 });
 
 // --------------------------------------------------------------------- sticks
@@ -501,16 +527,22 @@ document.querySelectorAll("[data-s]").forEach(el => {
     st[side + "y"] = Math.round(128 + dy / R * 127);
     mark(false);
   };
-  const end = () => {
+  const end = e => {
+    if (e.pointerId !== id) return;
     id = null;
     knob.style.transform = "";
     st[side + "x"] = st[side + "y"] = 128;
     mark(true);
   };
-  el.addEventListener("pointerdown", e => { id = e.pointerId; el.setPointerCapture(id); move(e); });
+  el.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (id !== null) return;
+    id = e.pointerId; el.setPointerCapture(id); move(e);
+  });
   el.addEventListener("pointermove", e => { if (e.pointerId === id) move(e); });
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);
+  el.addEventListener("lostpointercapture", end);
 });
 
 document.addEventListener("visibilitychange", () => {
